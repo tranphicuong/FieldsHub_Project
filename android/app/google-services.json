@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "442693512571",
+    "firebase_url": "https://sportfields-ff16a-default-rtdb.firebaseio.com",
+    "project_id": "sportfields-ff16a",
+    "storage_bucket": "sportfields-ff16a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:442693512571:android:4c7a541b1b31baec2da1de",
+        "android_client_info": {
+          "package_name": "com.example.fieldshub"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "442693512571-1ajopqbl8hhj4q70npm124pm37fc6dib.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCIN9v4qAo_2zNHKbMOFIFwW1Fm-pLmOso"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "442693512571-1ajopqbl8hhj4q70npm124pm37fc6dib.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "442693512571-rtm8ndepb54utodu2urp3ip470usit06.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.fieldshub"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
