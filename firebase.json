@@ -1,0 +1,38 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "sportfields-ff16a",
+          "appId": "1:442693512571:android:4c7a541b1b31baec2da1de",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "sportfields-ff16a",
+          "configurations": {
+            "android": "1:442693512571:android:4c7a541b1b31baec2da1de",
+            "ios": "1:442693512571:ios:c124c8644a769f192da1de",
+            "macos": "1:442693512571:ios:c124c8644a769f192da1de",
+            "web": "1:442693512571:web:521cf73c2d61bea12da1de",
+            "windows": "1:442693512571:web:be122482449356fc2da1de"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ]
+}

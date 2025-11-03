@@ -1,0 +1,17 @@
+# Flutter
+build/
+.dart_tool/
+ios/Pods/
+android/.gradle/
+android/app/build/
+
+# Node
+node_modules/
+
+# VSCode/Android Studio
+.vscode/
+.idea/
+
+# APK outputs
+*.apk
+*.aab
