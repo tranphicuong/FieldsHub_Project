@@ -17,41 +17,42 @@ try {
 }
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 
-// Resend
+// Resend 
+if (!process.env.RESEND_API_KEY) {
+  console.error("LỖI: RESEND_API_KEY không tồn tại! Vui lòng thêm trên Render.");
+  process.exit(1);
+}
+console.log("RESEND_API_KEY đã load:", process.env.RESEND_API_KEY.substring(0, 10) + "...");
+
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Health Check
 app.get("/", (req, res) => {
-  res.json({ 
-    status: "OTP Server đang chạy!", 
-    time: new Date().toISOString(),
-    tip: "Email vào INBOX 100% với fieldshub.app"
-  });
+  res.json({ status: "OTP Server OK", resend: !!process.env.RESEND_API_KEY });
 });
 
-// GỬI OTP – VÀO INBOX NGAY LẦN ĐẦU
+// GỬI OTP
 app.post("/send-otp", async (req, res) => {
   const { email, otp } = req.body;
-  if (!email || !otp) return res.status(400).json({ success: false, error: "Thiếu dữ liệu" });
+  console.log("Request gửi OTP:", { email, otp });
+
+  if (!email || !otp) {
+    return res.status(400).json({ success: false, error: "Thiếu dữ liệu" });
+  }
 
   try {
-    const { data } = await resend.emails.send({
-      from: 'Fields Sport <otp@fieldshub.app>', 
+    console.log("Đang gửi qua Resend...");
+    const response = await resend.emails.send({
+      from: 'Fields Sport <otp@fieldshub.app>',
       to: [email],
       subject: "Mã OTP Xác Thực",
-      html: `
-        <div style="font-family: Arial; text-align: center; padding: 20px;">
-          <h2 style="color: #1a73e8;">Mã OTP của bạn</h2>
-          <p style="font-size: 28px; font-weight: bold; color: #d93025; letter-spacing: 5px;">
-            ${otp}
-          </p>
-          <p>Mã có hiệu lực trong <strong>5 phút</strong></p>
-        </div>
-      `,
+      html: `<h2>Mã OTP: <strong>${otp}</strong></h2><p>Hiệu lực 5 phút.</p>`,
     });
+
+    console.log("Resend response:", response);
     res.json({ success: true });
   } catch (error) {
-    console.error("Lỗi gửi email:", error);
+    console.error("Lỗi Resend:", error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
