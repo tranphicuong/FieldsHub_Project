@@ -33,14 +33,15 @@ app.get("/", (req, res) => {
 
 app.post("/send-otp", async (req, res) => {
   const { email, otp } = req.body;
-  console.log("Gửi OTP đến:", email);
+  console.log("Request gửi OTP:", { email, otp });
 
   if (!email || !otp) {
     return res.status(400).json({ success: false, error: "Thiếu dữ liệu" });
   }
 
   try {
-    await resend.emails.send({
+    console.log("BẮT ĐẦU GỌI RESEND API...");
+    const response = await resend.emails.send({
       from: 'Fields Sport <onboarding@resend.dev>',
       to: [email],
       subject: 'Mã OTP Xác Thực Fields Sport',
@@ -60,16 +61,24 @@ app.post("/send-otp", async (req, res) => {
         </html>
       `,
     });
-    console.log("Resend response:", JSON.stringify(response, null, 2));
 
-    console.log("Gửi thành công đến:", email);
-    res.json({ success: true });
+    console.log("RESEND RESPONSE:", JSON.stringify(response, null, 2));
+
+    if (response.error) {
+      throw new Error(`Resend Error: ${response.error.message}`);
+    }
+
+    console.log("GỬI THÀNH CÔNG! ID:", response.data?.id);
+    res.json({ success: true, id: response.data?.id });
   } catch (error) {
-    console.error("Lỗi:", error.message);
+    console.error("LỖI GỌI RESEND:");
+    console.error("Message:", error.message);
+    console.error("Stack:", error.stack);
+    if (error.response?.data) console.error("Resend API Error:", error.response.data);
+
     res.status(500).json({ success: false, error: error.message });
   }
 });
-
 // Reset Password
 app.post("/reset-password", async (req, res) => {
   const { email, newPassword } = req.body;
