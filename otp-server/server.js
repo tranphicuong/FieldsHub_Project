@@ -42,36 +42,25 @@ app.post("/send-otp", async (req, res) => {
     const msg = {
       to: email,
       from: {
-        email: "fieldssport101025@gmail.com", 
+        email: "fieldssport101025@gmail.com",
         name: "Fields Sport",
       },
       subject: "Mã OTP Xác Thực Fields Sport",
-      html: `
-        <html>
-          <body style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
-            <h2 style="color: #1a73e8;">Xác Thực Tài Khoản</h2>
-            <p>Mã OTP của bạn là:</p>
-            <h1 style="font-size: 36px; color: #d93025; letter-spacing: 8px;">${otp}</h1>
-            <p><strong>Hiệu lực trong 5 phút</strong></p>
-            <p style="font-size: 12px; color: #666;">
-              Đây là email tự động. Vui lòng không trả lời.
-            </p>
-          </body>
-        </html>
-      `,
+      html: `<h1>${otp}</h1>`,
     };
 
     const [response] = await sgMail.send(msg);
     console.log("✅ SENDGRID RESPONSE:", response.statusCode);
-    console.log("📤 GỬI THÀNH CÔNG ĐẾN:", email);
-
-    res.json({ success: true });
+    return res.json({ success: true });
   } catch (error) {
-    console.error("❌ LỖI GỬI EMAIL:", error.message);
-    if (error.response) {
-      console.error("SendGrid Error Body:", error.response.body);
-    }
-    res.status(500).json({ success: false, error: error.message });
+    console.error("❌ LỖI GỬI EMAIL:", error);
+    if (error.response) console.error("SendGrid Error Body:", error.response.body);
+    // luôn trả về phản hồi để client không bị treo
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      body: error.response?.body || null,
+    });
   }
 });
 
