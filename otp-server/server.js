@@ -22,30 +22,26 @@ admin.initializeApp({
 });
 
 // Route gửi OTP
+
 app.post("/send-otp", async (req, res) => {
   const { email, otp } = req.body;
-
-  if (!email || !otp) {
-    return res.status(400).json({ success: false, error: "Thiếu email hoặc OTP" });
-  }
+  if (!email || !otp) return res.status(400).json({ success: false, error: "Thiếu email hoặc OTP" });
 
   try {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: "fieldssport101025@gmail.com",
-        pass: "jgur vyio dona gslg", // App Password
-      },
+    const resend = require('resend').Resend(process.env.RESEND_API_KEY);
+
+    const { data, error } = await resend.emails.send({
+      from: 'Fields Sport <noreply@fieldssport.com>', 
+      to: [email],
+      subject: "Mã OTP Xác Thực",
+      html: `<h2>Mã OTP của bạn</h2><p><strong>${otp}</strong></p><p>Hiệu lực 5 phút.</p>`,
     });
 
-    const mailOptions = {
-      from: "fieldssport101025@gmail.com",
-      to: email,
-      subject: "Mã OTP xác thực",
-      text: `Mã OTP của bạn là: ${otp}. Mã có hiệu lực trong 5 phút.`,
-    };
+    if (error) {
+      console.error("Lỗi Resend:", error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
 
-    await transporter.sendMail(mailOptions);
     res.json({ success: true });
   } catch (error) {
     console.error("Lỗi gửi email:", error);
