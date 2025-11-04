@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import admin from "firebase-admin";
 import fs from "fs";
-import sgMail from "@sendgrid/mail"; 
+import sgMail from "@sendgrid/mail";
 
 const app = express();
 app.use(cors());
@@ -46,8 +46,37 @@ app.post("/send-otp", async (req, res) => {
         name: "Fields Sport",
       },
       subject: "Mã OTP Xác Thực Fields Sport",
-      html: `<h1>${otp}</h1>`,
-    };
+      html: `
+    <div style="font-family: Arial, sans-serif; background-color:#f9fafb; padding:20px;">
+      <div style="max-width:600px; margin:auto; background:#ffffff; border-radius:10px; padding:30px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
+        <h2 style="color:#1a73e8; text-align:center;">Xác Thực Tài Khoản Fields Sport</h2>
+
+        <p>Xin chào <strong>người dùng Fields Sport</strong>,</p>
+        <p>Chúng tôi nhận được yêu cầu đăng ký hoặc đăng nhập vào hệ thống của bạn. 
+        Để đảm bảo an toàn cho tài khoản, vui lòng nhập mã OTP bên dưới để xác nhận.</p>
+
+        <div style="text-align:center; margin: 30px 0;">
+          <h1 style="color:#d93025; letter-spacing:6px; font-size:36px;">${otp}</h1>
+        </div>
+
+        <p>Mã OTP này chỉ có hiệu lực trong <strong>5 phút</strong>. 
+        Nếu bạn không yêu cầu xác thực, vui lòng bỏ qua email này. 
+        Đừng chia sẻ mã OTP với bất kỳ ai để bảo vệ tài khoản của bạn.</p>
+
+        <hr style="border:none; border-top:1px solid #ddd; margin:30px 0;">
+        <p style="font-size:13px; color:#555;">
+          Cảm ơn bạn đã sử dụng <strong>Fields Sport</strong> — nền tảng đặt sân thể thao trực tuyến nhanh chóng, tiện lợi và đáng tin cậy.<br>
+          Nếu có bất kỳ thắc mắc nào, hãy liên hệ với đội ngũ hỗ trợ qua email: 
+          <a href="mailto:fieldssport101025@gmail.com">fieldssport101025@gmail.com</a>.
+        </p>
+
+        <p style="font-size:12px; color:#999; text-align:center;">
+          Email này được gửi tự động. Vui lòng không trả lời lại tin nhắn này.
+        </p>
+      </div>
+    </div>
+  `,
+};
 
     const [response] = await sgMail.send(msg);
     console.log("✅ SENDGRID RESPONSE:", response.statusCode);
