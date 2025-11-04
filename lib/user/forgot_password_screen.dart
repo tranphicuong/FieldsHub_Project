@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:fieldshub/Database/email_sevice.dart';
 import 'package:fieldshub/user/login_screen.dart';
 import 'package:fieldshub/Database/api_service.dart';
+
 class ForgotPassword extends StatefulWidget {
   const ForgotPassword({super.key});
 
@@ -69,135 +70,77 @@ class _ForgotPasswordState extends State<ForgotPassword> {
     }
   }
 
-  
   Future<void> _forgotpassword() async {
     final email = _emailController.text.trim();
     final newpassword = _newpasswordController.text.trim();
     final repassword = _repasswordController.text.trim();
     final otpInput = _otpController.text.trim();
 
+    // --- VALIDATION ---
     if (email.isEmpty ||
         newpassword.isEmpty ||
         repassword.isEmpty ||
         otpInput.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Vui lòng nhập đầy đủ thông tin"),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+      _showSnackBar("Vui lòng nhập đầy đủ thông tin");
       return;
     }
-
     if (newpassword != repassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Mật khẩu nhập lại không khớp"),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+      _showSnackBar("Mật khẩu nhập lại không khớp");
       return;
     }
-
     if (newpassword.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Mật khẩu phải có ít nhất 6 ký tự"),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+      _showSnackBar("Mật khẩu phải có ít nhất 6 ký tự");
       return;
     }
-
     if (_otpSent == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Vui lòng gửi mã OTP"),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+      _showSnackBar("Vui lòng gửi mã OTP");
       return;
     }
-
     if (DateTime.now().isAfter(_otpExpire!)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Mã OTP đã hết hạn"),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+      _showSnackBar("Mã OTP đã hết hạn");
       return;
     }
-
     if (otpInput != _otpSent) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Mã OTP không chính xác"),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+      _showSnackBar("Mã OTP không chính xác");
       return;
     }
 
+    // --- GỌI API RESET PASSWORD ---
     try {
-     final response = await http.post(
-  ApiService.resetPassword(), // ĐÚNG: HTTPS + /reset-password
-  headers: {'Content-Type': 'application/json'},
-  body: jsonEncode({'email': email, 'newPassword': newpassword}),
-);
+      final response = await http.post(
+        ApiService.resetPassword(),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'newPassword': newpassword}),
+      );
 
       final result = jsonDecode(response.body);
 
-      if (result['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Đổi mật khẩu thành công"),
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-
+      if (response.statusCode == 200 && result['success'] == true) {
+        _showSnackBar("Đổi mật khẩu thành công");
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const LoginScreen()),
         );
       } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Lỗi: ${result['message']}")));
+        _showSnackBar(
+          "Lỗi: ${result['error'] ?? result['message'] ?? 'Unknown'}",
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Lỗi khi đổi mật khẩu: $e")));
+      _showSnackBar("Lỗi kết nối: $e");
     }
+  }
+
+  // Helper để tránh lặp code SnackBar
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   @override

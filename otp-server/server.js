@@ -36,7 +36,7 @@ app.post("/send-otp", async (req, res) => {
 
   try {
     const { data } = await resend.emails.send({
-      from: 'Fields Sport <otp@fieldshub.app>',  // DOMAIN ĐÃ VERIFY – INBOX 100%
+      from: 'Fields Sport <otp@fieldshub.app>', 
       to: [email],
       subject: "Mã OTP Xác Thực",
       html: `
@@ -49,7 +49,7 @@ app.post("/send-otp", async (req, res) => {
         </div>
       `,
     });
-    res.json({ success: true, id: data.id });
+    res.json({ success: true });
   } catch (error) {
     console.error("Lỗi gửi email:", error);
     res.status(500).json({ success: false, error: error.message });
