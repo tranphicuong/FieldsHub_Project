@@ -31,30 +31,40 @@ app.get("/", (req, res) => {
   res.json({ status: "OTP Server OK", resend: true });
 });
 
-// GỬI OTP – AN TOÀN, KHÔNG LỖI NULL
 app.post("/send-otp", async (req, res) => {
   const { email, otp } = req.body;
-  console.log("Request gửi OTP:", { email, otp });
+  console.log("Gửi OTP đến:", email);
 
   if (!email || !otp) {
     return res.status(400).json({ success: false, error: "Thiếu dữ liệu" });
   }
 
   try {
-    console.log("Đang gửi qua Resend...");
-    const response = await resend.emails.send({
+    await resend.emails.send({
       from: 'Fields Sport <onboarding@resend.dev>',
       to: [email],
-      subject: "Mã OTP Xác Thực",
-      html: `<h2>Mã OTP: <strong>${otp}</strong></h2><p>Hiệu lực 5 phút.</p>`,
+      subject: 'Mã OTP Xác Thực Fields Sport',
+      reply_to: 'support@fieldshub.app',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+          <h2 style="color: #1a73e8;">Xác Thực Tài Khoản</h2>
+          <p>Mã OTP của bạn là:</p>
+          <h1 style="font-size: 36px; color: #d93025; letter-spacing: 8px;">${otp}</h1>
+          <p><strong>Hiệu lực trong 5 phút</strong></p>
+          <p style="font-size: 12px; color: #666;">
+            Đây là email tự động. Vui lòng không trả lời.
+          </p>
+        </body>
+        </html>
+      `,
     });
 
-    const emailId = response.data?.id || "Không có ID (vẫn thành công)";
-    console.log("Gửi thành công! Email ID:", emailId);
-
+    console.log("Gửi thành công đến:", email);
     res.json({ success: true });
   } catch (error) {
-    console.error("Lỗi Resend:", error.message);
+    console.error("Lỗi:", error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
