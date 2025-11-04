@@ -1,30 +1,25 @@
 import express from "express";
 import cors from "cors";
 import admin from "firebase-admin";
-import fs from "fs";
 import sgMail from "@sendgrid/mail";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Firebase service account JSON ENV
+let serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
 
-let serviceAccount;
-try {
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
-} catch (err) {
-  serviceAccount = JSON.parse(fs.readFileSync("./serviceAccountKey.json", "utf-8"));
-}
-admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
-
+// SENDGRID INIT
 if (!process.env.SENDGRID_API_KEY) {
-  console.error("❌ LỖI: SENDGRID_API_KEY không tồn tại trong môi trường!");
+  console.error("❌ SENDGRID_API_KEY not found!");
   process.exit(1);
 }
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-console.log("✅ SENDGRID_API_KEY đã load:", process.env.SENDGRID_API_KEY.substring(0, 10) + "...");
-
 
 app.get("/", (req, res) => {
   res.json({ status: "OTP Server OK", sendgrid: true });
@@ -32,10 +27,10 @@ app.get("/", (req, res) => {
 
 app.post("/send-otp", async (req, res) => {
   const { email, otp } = req.body;
-  console.log("📨 Gửi OTP đến:", email);
+  console.log("📨 send OTP:", email);
 
   if (!email || !otp) {
-    return res.status(400).json({ success: false, error: "Thiếu dữ liệu" });
+    return res.status(400).json({ success: false, error: "missing data" });
   }
 
   try {
@@ -76,26 +71,24 @@ app.post("/send-otp", async (req, res) => {
       </div>
     </div>
   `,
-};
+    };
 
-    const [response] = await sgMail.send(msg);
-    console.log("✅ SENDGRID RESPONSE:", response.statusCode);
+    await sgMail.send(msg);
     return res.json({ success: true });
-  } catch (error) {
-    console.error("❌ LỖI GỬI EMAIL:", error);
-    if (error.response) console.error("SendGrid Error Body:", error.response.body);
-    // luôn trả về phản hồi để client không bị treo
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-      body: error.response?.body || null,
-    });
+  } catch (err) {
+    console.error("SENDGRID ERROR", err.response?.body || err.message);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
-
 app.post("/reset-password", async (req, res) => {
   const { email, newPassword } = req.body;
+
+  if (!email || !newPassword) return res.status(400).json({ success: false });
+
+  if (newPassword.length < 8)
+    return res.status(400).json({ success: false, error: "password must >= 8" });
+
   try {
     const user = await admin.auth().getUserByEmail(email);
     await admin.auth().updateUser(user.uid, { password: newPassword });
@@ -105,8 +98,5 @@ app.post("/reset-password", async (req, res) => {
   }
 });
 
-
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server chạy tại port ${PORT}`);
-});
+app.listen(PORT, "0.0.0.0", () => console.log("🚀 Server start", PORT));
