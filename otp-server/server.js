@@ -1,8 +1,7 @@
 import express from "express";
-import nodemailer from "nodemailer";
 import cors from "cors";
 import admin from "firebase-admin";
-import { Resend } from 'resend'; // ĐÚNG: import ES Module
+import { Resend } from 'resend';
 import fs from "fs";
 
 const app = express();
@@ -14,36 +13,43 @@ let serviceAccount;
 try {
   serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
 } catch (err) {
-  console.log("Đang đọc file local (dev only)...");
   serviceAccount = JSON.parse(fs.readFileSync("./serviceAccountKey.json", "utf-8"));
 }
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 
 // Resend
-const resend = new Resend(process.env.RESEND_API_KEY); // ĐÚNG
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Health Check
 app.get("/", (req, res) => {
-  res.json({ status: "OTP Server chạy tốt!", time: new Date().toISOString() });
+  res.json({ 
+    status: "OTP Server đang chạy!", 
+    time: new Date().toISOString(),
+    tip: "Email vào INBOX 100% với fieldshub.app"
+  });
 });
 
-// Gửi OTP
+// GỬI OTP – VÀO INBOX NGAY LẦN ĐẦU
 app.post("/send-otp", async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) return res.status(400).json({ success: false, error: "Thiếu dữ liệu" });
 
   try {
-    const { data, error } = await resend.emails.send({
-      from: 'Fields Sport <onboarding@resend.dev>', // DÙNG DEFAULT DOMAIN
+    const { data } = await resend.emails.send({
+      from: 'Fields Sport <otp@fieldshub.app>',  // DOMAIN ĐÃ VERIFY – INBOX 100%
       to: [email],
       subject: "Mã OTP Xác Thực",
-      html: `<h2>Mã OTP: <strong>${otp}</strong></h2><p>Hiệu lực 5 phút.</p>`,
+      html: `
+        <div style="font-family: Arial; text-align: center; padding: 20px;">
+          <h2 style="color: #1a73e8;">Mã OTP của bạn</h2>
+          <p style="font-size: 28px; font-weight: bold; color: #d93025; letter-spacing: 5px;">
+            ${otp}
+          </p>
+          <p>Mã có hiệu lực trong <strong>5 phút</strong></p>
+        </div>
+      `,
     });
-
-    if (error) throw error;
-
-    console.log("Email sent:", data);
-    res.json({ success: true });
+    res.json({ success: true, id: data.id });
   } catch (error) {
     console.error("Lỗi gửi email:", error);
     res.status(500).json({ success: false, error: error.message });
