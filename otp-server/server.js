@@ -33,7 +33,7 @@ app.get("/", (req, res) => {
 
 app.post("/send-otp", async (req, res) => {
   const { email, otp } = req.body;
-  console.log("Request gửi OTP:", { email, otp });
+  console.log("Gửi OTP đến:", email);
 
   if (!email || !otp) {
     return res.status(400).json({ success: false, error: "Thiếu dữ liệu" });
@@ -41,6 +41,8 @@ app.post("/send-otp", async (req, res) => {
 
   try {
     console.log("BẮT ĐẦU GỌI RESEND API...");
+
+    // KHAI BÁO response TRƯỚC KHI DÙNG
     const response = await resend.emails.send({
       from: 'Fields Sport <onboarding@resend.dev>',
       to: [email],
@@ -62,6 +64,7 @@ app.post("/send-otp", async (req, res) => {
       `,
     });
 
+    // BÂY GIỜ MỚI LOG
     console.log("RESEND RESPONSE:", JSON.stringify(response, null, 2));
 
     if (response.error) {
@@ -70,12 +73,12 @@ app.post("/send-otp", async (req, res) => {
 
     console.log("GỬI THÀNH CÔNG! ID:", response.data?.id);
     res.json({ success: true, id: response.data?.id });
+
   } catch (error) {
-    console.error("LỖI GỌI RESEND:");
+    console.error("=== LỖI GỌI RESEND ===");
     console.error("Message:", error.message);
     console.error("Stack:", error.stack);
-    if (error.response?.data) console.error("Resend API Error:", error.response.data);
-
+    console.error("=== KẾT THÚC LỖI ===");
     res.status(500).json({ success: false, error: error.message });
   }
 });
