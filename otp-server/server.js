@@ -42,7 +42,7 @@ app.post("/send-otp", async (req, res) => {
     const msg = {
       to: email,
       from: {
-        email: "noreply@fieldshub.app", 
+        email: "fieldssport101025@gmail.com", 
         name: "Fields Sport",
       },
       subject: "Mã OTP Xác Thực Fields Sport",
