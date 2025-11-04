@@ -60,6 +60,7 @@ app.post("/send-otp", async (req, res) => {
         </html>
       `,
     });
+    console.log("Resend response:", JSON.stringify(response, null, 2));
 
     console.log("Gửi thành công đến:", email);
     res.json({ success: true });
