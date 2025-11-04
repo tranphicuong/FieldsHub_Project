@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:fieldshub/Database/email_sevice.dart';
 import 'package:fieldshub/user/login_screen.dart';
-
+import 'package:fieldshub/Database/api_service.dart';
 class ForgotPassword extends StatefulWidget {
   const ForgotPassword({super.key});
 
@@ -164,11 +164,11 @@ class _ForgotPasswordState extends State<ForgotPassword> {
     }
 
     try {
-      final response = await http.post(
-        Uri.parse('http://10.0.2.2:3000/reset-password'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'newPassword': newpassword}),
-      );
+     final response = await http.post(
+  ApiService.resetPassword(), // ĐÚNG: HTTPS + /reset-password
+  headers: {'Content-Type': 'application/json'},
+  body: jsonEncode({'email': email, 'newPassword': newpassword}),
+);
 
       final result = jsonDecode(response.body);
 

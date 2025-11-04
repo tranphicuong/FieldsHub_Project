@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:fieldshub/Database/api_service.dart';
 
 class EmailService {
   static String generateOtp() {
@@ -9,20 +10,18 @@ class EmailService {
   }
 
   static Future<void> sendOtpEmail({
-    required String receiverEmail,
-    required String otp,
-  }) async {
-    final url = Uri.parse("https://otp-server.onrender.com/send-otp");
+  required String receiverEmail,
+  required String otp,
+}) async {
+  final response = await http.post(
+    ApiService.sendOtp(), 
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode({'email': receiverEmail, 'otp': otp}),
+  );
 
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': receiverEmail, 'otp': otp}),
-    );
-
-    if (response.statusCode != 200) {
-      final error = jsonDecode(response.body)['error'] ?? response.body;
-      throw Exception('Gửi OTP thất bại: $error');
-    }
+  if (response.statusCode != 200) {
+    final error = jsonDecode(response.body)['error'] ?? response.body;
+    throw Exception('Gửi OTP thất bại: $error');
   }
+}
 }
