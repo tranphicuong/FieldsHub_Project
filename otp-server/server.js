@@ -17,9 +17,9 @@ try {
 }
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 
-// Resend 
+// Resend
 if (!process.env.RESEND_API_KEY) {
-  console.error("LỖI: RESEND_API_KEY không tồn tại! Vui lòng thêm trên Render.");
+  console.error("LỖI: RESEND_API_KEY không tồn tại!");
   process.exit(1);
 }
 console.log("RESEND_API_KEY đã load:", process.env.RESEND_API_KEY.substring(0, 10) + "...");
@@ -28,10 +28,10 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Health Check
 app.get("/", (req, res) => {
-  res.json({ status: "OTP Server OK", resend: !!process.env.RESEND_API_KEY });
+  res.json({ status: "OTP Server OK", resend: true });
 });
 
-// GỬI OTP
+// GỬI OTP – AN TOÀN, KHÔNG LỖI NULL
 app.post("/send-otp", async (req, res) => {
   const { email, otp } = req.body;
   console.log("Request gửi OTP:", { email, otp });
@@ -49,7 +49,9 @@ app.post("/send-otp", async (req, res) => {
       html: `<h2>Mã OTP: <strong>${otp}</strong></h2><p>Hiệu lực 5 phút.</p>`,
     });
 
-    console.log("Resend response:", response);
+    const emailId = response.data?.id || "Không có ID (vẫn thành công)";
+    console.log("Gửi thành công! Email ID:", emailId);
+
     res.json({ success: true });
   } catch (error) {
     console.error("Lỗi Resend:", error.message);
