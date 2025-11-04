@@ -1,7 +1,6 @@
 import express from "express";
 import cors from "cors";
 import admin from "firebase-admin";
-import { Resend } from 'resend';
 import fs from "fs";
 
 const app = express();
@@ -17,18 +16,19 @@ try {
 }
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 
-// Resend
-if (!process.env.RESEND_API_KEY) {
-  console.error("LỖI: RESEND_API_KEY không tồn tại!");
+// SendGrid
+if (!process.env.SENDGRID_API_KEY) {
+  console.error("LỖI: SENDGRID_API_KEY không tồn tại!");
   process.exit(1);
 }
-console.log("RESEND_API_KEY đã load:", process.env.RESEND_API_KEY.substring(0, 10) + "...");
+console.log("SENDGRID_API_KEY đã load:", process.env.SENDGRID_API_KEY.substring(0, 10) + "...");
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const sgMail = require('@sendgrid/mail');
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 // Health Check
 app.get("/", (req, res) => {
-  res.json({ status: "OTP Server OK", resend: true });
+  res.json({ status: "OTP Server OK", sendgrid: true });
 });
 
 app.post("/send-otp", async (req, res) => {
@@ -40,14 +40,10 @@ app.post("/send-otp", async (req, res) => {
   }
 
   try {
-    console.log("BẮT ĐẦU GỌI RESEND API...");
-
-    // KHAI BÁO response TRƯỚC KHI DÙNG
-    const response = await resend.emails.send({
-      from: 'Fields Sport <onboarding@resend.dev>',
-      to: [email],
+    const msg = {
+      to: email,
+      from: 'Fields Sport <noreply@fieldshub.app>', // DÙNG DOMAIN BẠN CÓ
       subject: 'Mã OTP Xác Thực Fields Sport',
-      reply_to: 'support@fieldshub.app',
       html: `
         <!DOCTYPE html>
         <html>
@@ -62,26 +58,22 @@ app.post("/send-otp", async (req, res) => {
         </body>
         </html>
       `,
-    });
+    };
 
-    // BÂY GIỜ MỚI LOG
-    console.log("RESEND RESPONSE:", JSON.stringify(response, null, 2));
+    const response = await sgMail.send(msg);
+    console.log("SENDGRID RESPONSE:", response[0].statusCode);
+    console.log("GỬI THÀNH CÔNG ĐẾN:", email);
 
-    if (response.error) {
-      throw new Error(`Resend Error: ${response.error.message}`);
-    }
-
-    console.log("GỬI THÀNH CÔNG! ID:", response.data?.id);
-    res.json({ success: true, id: response.data?.id });
-
+    res.json({ success: true });
   } catch (error) {
-    console.error("=== LỖI GỌI RESEND ===");
-    console.error("Message:", error.message);
-    console.error("Stack:", error.stack);
-    console.error("=== KẾT THÚC LỖI ===");
+    console.error("LỖI GỬI EMAIL:", error.message);
+    if (error.response) {
+      console.error("SendGrid Error Body:", error.response.body);
+    }
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
 // Reset Password
 app.post("/reset-password", async (req, res) => {
   const { email, newPassword } = req.body;
