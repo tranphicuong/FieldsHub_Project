@@ -29,7 +29,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadUserData();
   }
 
-  // 🔹 Tải dữ liệu người dùng an toàn, không crash khi kiểu dữ liệu khác
+  
   Future<void> _loadUserData() async {
     try {
       if (currentUser == null) return;

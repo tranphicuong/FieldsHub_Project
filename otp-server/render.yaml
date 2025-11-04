@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: email-otp-service
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: FIREBASE_SERVICE_ACCOUNT_KEY
+        sync: false  
+      - key: PORT
+        value: 3000
