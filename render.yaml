@@ -4,7 +4,8 @@ services:
     env: node
     plan: free
     buildCommand: npm install
-    startCommand: node index.js
+    startCommand: node otp-server/server.js  
+    rootDirectory: otp-server
     envVars:
       - key: FIREBASE_SERVICE_ACCOUNT_KEY
         sync: false  
