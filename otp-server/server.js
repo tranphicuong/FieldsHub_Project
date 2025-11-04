@@ -43,7 +43,7 @@ app.post("/send-otp", async (req, res) => {
   try {
     console.log("Đang gửi qua Resend...");
     const response = await resend.emails.send({
-      from: 'Fields Sport <otp@fieldshub.app>',
+      from: 'Fields Sport <onboarding@resend.dev>',
       to: [email],
       subject: "Mã OTP Xác Thực",
       html: `<h2>Mã OTP: <strong>${otp}</strong></h2><p>Hiệu lực 5 phút.</p>`,
