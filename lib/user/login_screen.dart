@@ -194,7 +194,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 _showSnackBar("Vui lòng nhập đầy đủ thông tin");
                 return;
               }
-              Navigator.push(
+              Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
                   builder: (_) => RegisterPasswordScreen(
