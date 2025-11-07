@@ -34,7 +34,7 @@ class DanhGiaCuaToiScreen extends StatelessWidget {
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('reviews')
-            .where('user_id', isEqualTo: FirebaseFirestore.instance.doc('/users/${currentUser.uid}'))
+            .where('user_id', isEqualTo: '/users/${currentUser.uid}')
             .orderBy('created_at', descending: true)
             .snapshots(),
         builder: (context, snapshot) {

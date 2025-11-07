@@ -26,24 +26,19 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
   @override
   void initState() {
     super.initState();
-    _autoFixOldData(); // TỰ ĐỘNG THÊM sport_id
+    _autoFixOldData(); 
     _listenToRevenueUpdates();
   }
 
-  // TỰ ĐỘNG THÊM sport_id VÀO TẤT CẢ BOOKINGS
+  // ✅ Tự động fix sport_id cũ
   Future<void> _autoFixOldData() async {
     try {
-      debugPrint('Bắt đầu tự động thêm sport_id...');
-
       final fieldsSnap = await _firestore.collection('fields').get();
-      int updatedFields = 0;
-      int updatedBookings = 0;
 
       for (var fieldDoc in fieldsSnap.docs) {
         final fieldData = fieldDoc.data();
         final fieldId = fieldDoc.id;
 
-        // Nếu chưa có sport_id → thêm
         if (!fieldData.containsKey('sport_id') || fieldData['sport_id'] == null) {
           String sportKey = 'Khác';
           final name = fieldData['name']?.toString() ?? '';
@@ -53,7 +48,6 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
             sportKey = 'BongDa';
           } else if (name.contains('Cầu') || oldSport == 'CauLong') {
             sportKey = 'CauLong';
-          
           } else if (name.contains('Chuyền') || oldSport == 'BongChuyen') {
             sportKey = 'BongChuyen';
           } else if (name.contains('Bida')) {
@@ -62,13 +56,10 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
 
           final sportRef = 'sports/$sportKey';
           await fieldDoc.reference.set({'sport_id': sportRef}, SetOptions(merge: true));
-          updatedFields++;
         }
 
-        // Lấy sport_id hiện tại của field
         final sportId = fieldData['sport_id'] ?? (fieldData['sport'] != null ? 'sports/${_mapOldSport(fieldData['sport'])}' : 'sports/Khác');
 
-        // Cập nhật tất cả bookings của field này
         final bookingsSnap = await _firestore
             .collection('bookings')
             .where('field_id', isEqualTo: _firestore.doc('fields/$fieldId'))
@@ -78,20 +69,11 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
           final bookingData = bookingDoc.data();
           if (!bookingData.containsKey('sport_id')) {
             await bookingDoc.reference.set({'sport_id': sportId}, SetOptions(merge: true));
-            updatedBookings++;
           }
         }
       }
-
-      debugPrint('ĐÃ FIX: $updatedFields fields, $updatedBookings bookings');
-      
     } catch (e) {
       debugPrint('Lỗi tự động fix: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi cập nhật sport_id: $e'), backgroundColor: Colors.red),
-        );
-      }
     }
   }
 
@@ -103,10 +85,11 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
     return 'Khác';
   }
 
+  // ✅ Lắng nghe thay đổi doanh thu
   void _listenToRevenueUpdates() {
     final now = DateTime.now();
 
-    // NGÀY HÔM NAY
+    // Hôm nay
     final startOfDay = DateTime(now.year, now.month, now.day);
     final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
@@ -116,16 +99,12 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
         .where('start_time', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
         .where('start_time', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
         .snapshots()
-        .listen(
-          (snapshot) {
-            debugPrint('Daily stream: ${snapshot.docs.length} bookings');
-            _updateDailyPieChart(snapshot);
-            _updateHourlyBarChart(snapshot);
-          },
-         
-        );
+        .listen((snapshot) {
+      _updateDailyPieChart(snapshot);
+      _updateHourlyBarChart(snapshot);
+    });
 
-    // THÁNG NÀY
+    // Tháng này
     final startOfMonth = DateTime(now.year, now.month, 1);
     final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
 
@@ -135,17 +114,11 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
         .where('start_time', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
         .where('start_time', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
         .snapshots()
-        .listen(
-          (snapshot) {
-            debugPrint('Monthly stream: ${snapshot.docs.length} bookings');
-            _updateMonthlyPieChart(snapshot);
-            _updateMonthlyTotal(snapshot);
-          },
-          
-        );
+        .listen((snapshot) {
+      _updateMonthlyPieChart(snapshot);
+      _updateMonthlyTotal(snapshot);
+    });
   }
-
-  
 
   Future<String> _getSportName(dynamic sportId) async {
     if (sportId == null) return 'Khác';
@@ -231,14 +204,14 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
           return PieChartSectionData(
             color: _getSportColor(e.key),
             value: e.value,
-            title: total > 0 ? '${percentage.toStringAsFixed(0)}%' : '0đ',
+            title: '${percentage.toStringAsFixed(0)}%',
             radius: 45,
             titleStyle: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.bold),
           );
         }).toList();
 
         if (dailyPieData.isEmpty) {
-          dailyPieData = [PieChartSectionData(color: Colors.grey.shade400, value: 100, title: '0đ', radius: 45)];
+          dailyPieData = [PieChartSectionData(color: Colors.grey.shade400, value: 100, title: '0%', radius: 45)];
         }
       });
     }
@@ -276,7 +249,7 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
         hourlyBarData = List.generate(24, (i) {
           final hourData = hourlyBySport[i] ?? {};
           final rods = hourData.entries.map((e) {
-            return BarChartRodData(toY: e.value, color: _getSportColor(e.key), width: 16);
+            return BarChartRodData(toY: e.value, color: _getSportColor(e.key), width: 14);
           }).toList();
 
           return BarChartGroupData(
@@ -298,10 +271,7 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
         centerTitle: true,
       ),
       body: RefreshIndicator(
-        onRefresh: () async {
-          setState(() {});
-          await Future.delayed(const Duration(milliseconds: 500));
-        },
+        onRefresh: () async => setState(() {}),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
@@ -311,7 +281,7 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
               const Text("Dashboard", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
               const SizedBox(height: 20),
 
-              // BIỂU ĐỒ TRÒN - HÔM NAY
+              // ✅ Biểu đồ tròn - hôm nay
               Card(
                 elevation: 4,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -342,7 +312,7 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
 
               const SizedBox(height: 24),
 
-              // TỔNG DOANH THU THÁNG
+              // ✅ Tổng doanh thu tháng
               Card(
                 elevation: 4,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -363,7 +333,7 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
 
               const SizedBox(height: 30),
 
-              // BIỂU ĐỒ CỘT - THEO GIỜ
+              // ✅ Biểu đồ cột doanh thu theo giờ
               const Text("Doanh thu theo giờ (0h - 23h)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
 
@@ -374,40 +344,64 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
                   padding: const EdgeInsets.all(16),
                   child: SizedBox(
                     height: 340,
-                    child: BarChart(
-                      BarChartData(
-                        alignment: BarChartAlignment.spaceAround,
-                        borderData: FlBorderData(show: false),
-                        gridData: FlGridData(show: true, drawVerticalLine: false),
-                        titlesData: FlTitlesData(
-                          bottomTitles: AxisTitles(
-                            sideTitles: SideTitles(
-                              showTitles: true,
-                              reservedSize: 30,
-                              interval: 2,
-                              getTitlesWidget: (value, meta) => Text('${value.toInt()}h', style: const TextStyle(fontSize: 11)),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: 24 * 40,
+                        child: BarChart(
+                          BarChartData(
+                            alignment: BarChartAlignment.center,
+                            borderData: FlBorderData(show: false),
+                            gridData: FlGridData(show: true, drawVerticalLine: false),
+                            titlesData: FlTitlesData(
+                              bottomTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 30,
+                                  interval: 1,
+                                  getTitlesWidget: (value, meta) {
+                                    if (value.toInt() % 2 == 0) {
+                                      return Text('${value.toInt()}h', style: const TextStyle(fontSize: 10));
+                                    }
+                                    return const SizedBox.shrink();
+                                  },
+                                ),
+                              ),
+                              leftTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 40,
+                                  interval: 50000,
+                                  getTitlesWidget: (value, meta) {
+                                    if (value == 0) return const Text('0');
+                                    return Text('${(value / 1000).toStringAsFixed(0)}K',
+                                        style: const TextStyle(fontSize: 10));
+                                  },
+                                ),
+                              ),
+                              rightTitles:
+                                  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              topTitles:
+                                  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                             ),
-                          ),
-                          leftTitles: AxisTitles(
-                            sideTitles: SideTitles(
-                              showTitles: true,
-                              getTitlesWidget: (value, meta) => Text('${(value / 1000).toInt()}K', style: const TextStyle(fontSize: 10)),
+                            barGroups: hourlyBarData,
+                            barTouchData: BarTouchData(
+                              enabled: true,
+                              touchTooltipData: BarTouchTooltipData(
+                                getTooltipColor: (_) => Colors.black87,
+                                getTooltipItem: (group, _, rod, __) {
+                                  final hour = group.x;
+                                  final sport = _getSportFromColor(rod.color!);
+                                  return BarTooltipItem(
+                                    '$hour:00\n${_currencyFormat.format(rod.toY)}\n($sport)',
+                                    const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  );
+                                },
+                              ),
                             ),
-                          ),
-                        ),
-                        barGroups: hourlyBarData,
-                        barTouchData: BarTouchData(
-                          enabled: true,
-                          touchTooltipData: BarTouchTooltipData(
-                            getTooltipColor: (_) => Colors.black87,
-                            getTooltipItem: (group, _, rod, rodIndex) {
-                              final hour = group.x;
-                              final sport = _getSportFromColor(rod.color!);
-                              return BarTooltipItem(
-                                '$hour:00\n${_currencyFormat.format(rod.toY)}\n($sport)',
-                                const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                              );
-                            },
                           ),
                         ),
                       ),
@@ -463,7 +457,6 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
   String _getSportFromColor(Color color) {
     if (color == Colors.green.shade600) return 'Bóng đá';
     if (color == Colors.blue.shade600) return 'Cầu lông';
-    
     if (color == Colors.purple.shade600) return 'Bóng chuyền';
     if (color == Colors.brown.shade600) return 'Bida';
     return 'Khác';

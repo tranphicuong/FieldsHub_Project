@@ -26,6 +26,107 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     super.dispose();
   }
 
+  // Helper: convert many possible time_slot representations to a readable string
+  String formatTimeSlot(dynamic timeSlot) {
+    final DateFormat fmt = DateFormat('dd/MM HH:mm');
+
+    DateTime? fromTs;
+    DateTime? toTs;
+
+    try {
+      // 1) If it's a Firestore Timestamp
+      if (timeSlot is Timestamp) {
+        fromTs = timeSlot.toDate();
+        return fmt.format(fromTs);
+      }
+
+      // 2) If it's a list/array [start, end] where items might be Timestamp or map
+      if (timeSlot is List && timeSlot.isNotEmpty) {
+        dynamic a = timeSlot[0];
+        dynamic b = timeSlot.length > 1 ? timeSlot[1] : null;
+
+        DateTime? parseSingle(dynamic x) {
+          if (x == null) return null;
+          if (x is Timestamp) return x.toDate();
+          if (x is Map && x['seconds'] != null) {
+            final secs = x['seconds'];
+            final nanos = x['nanoseconds'] ?? 0;
+            return DateTime.fromMillisecondsSinceEpoch(secs * 1000 + (nanos ~/ 1000000));
+          }
+          return null;
+        }
+
+        fromTs = parseSingle(a);
+        toTs = parseSingle(b);
+
+        if (fromTs != null && toTs != null) {
+          return '${fmt.format(fromTs)} - ${fmt.format(toTs)}';
+        } else if (fromTs != null) {
+          return fmt.format(fromTs);
+        }
+      }
+
+      // 3) If it's a Map that contains seconds/nanoseconds (single or start/end)
+      if (timeSlot is Map) {
+        // Possible shapes: { 'start': Timestamp or map, 'end': ... } or single { 'seconds': ..., 'nanoseconds': ... }
+        DateTime? tryFromMap(Map m) {
+          if (m['seconds'] != null) {
+            final secs = m['seconds'];
+            final nanos = m['nanoseconds'] ?? 0;
+            return DateTime.fromMillisecondsSinceEpoch(secs * 1000 + (nanos ~/ 1000000));
+          }
+          return null;
+        }
+
+        if (timeSlot['start'] != null || timeSlot['end'] != null) {
+          final s = timeSlot['start'];
+          final e = timeSlot['end'];
+          DateTime? sd = s is Timestamp ? s.toDate() : (s is Map ? tryFromMap(s) : null);
+          DateTime? ed = e is Timestamp ? e.toDate() : (e is Map ? tryFromMap(e) : null);
+          if (sd != null && ed != null) return '${fmt.format(sd)} - ${fmt.format(ed)}';
+          if (sd != null) return fmt.format(sd);
+        }
+
+        // single timestamp map
+        final single = tryFromMap(timeSlot);
+        if (single != null) return fmt.format(single);
+      }
+
+      // 4) If it's a string that contains Timestamp(...) occurrences (like screenshot)
+      if (timeSlot is String) {
+        // try to extract seconds=NUMBER patterns (two of them ideally)
+        final RegExp re = RegExp(r'seconds\s*=\s*(\d+)');
+        final matches = re.allMatches(timeSlot).toList();
+        if (matches.isNotEmpty) {
+          List<DateTime> dates = [];
+          for (final m in matches) {
+            final secStr = m.group(1);
+            if (secStr != null) {
+              final secs = int.tryParse(secStr);
+              if (secs != null) {
+                dates.add(DateTime.fromMillisecondsSinceEpoch(secs * 1000));
+              }
+            }
+          }
+          if (dates.length >= 2) {
+            return '${fmt.format(dates[0])} - ${fmt.format(dates[1])}';
+          } else if (dates.length == 1) {
+            return fmt.format(dates[0]);
+          }
+        }
+
+        // if it's already a readable string, just return it trimmed
+        if (timeSlot.trim().isNotEmpty) {
+          return timeSlot.trim();
+        }
+      }
+    } catch (e) {
+      // ignore parse errors and fall through
+    }
+
+    return 'Không xác định';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -41,10 +142,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ),
         centerTitle: true,
       ),
-
-
       backgroundColor: Colors.white,
-
       body: _buildBody(),
     );
   }
@@ -54,9 +152,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return const Center(child: Text('Không có thông báo để hiển thị'));
     }
 
-    final currentUserRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.userId);
+    final currentUserRef = FirebaseFirestore.instance.collection('users').doc(widget.userId);
 
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -102,7 +198,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 final titleText = data['title'] ?? 'Thông báo';
                 final subtitle = data['subtitle'] ?? '';
                 final fieldName = data['field_name'] ?? '';
-                final timeSlot = data['time_slot'] ?? '';
+                final rawTimeSlot = data['time_slot']; // raw value from Firestore
                 final paymentMethod = data['payment_method'] ?? '';
                 final isRead = data['is_read'] ?? false;
 
@@ -125,10 +221,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       if (fieldRef is DocumentReference) {
                         fieldDoc = await fieldRef.get();
                       } else if (fieldRef is String) {
-                        fieldDoc = await FirebaseFirestore.instance
-                            .collection('fields')
-                            .doc(fieldRef)
-                            .get();
+                        fieldDoc = await FirebaseFirestore.instance.collection('fields').doc(fieldRef).get();
                       }
                       if (fieldDoc != null && fieldDoc.exists) {
                         final fieldData = fieldDoc.data() as Map<String, dynamic>?;
@@ -137,10 +230,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         if (areaRef is DocumentReference) {
                           areaDoc = await areaRef.get();
                         } else if (areaRef is String) {
-                          areaDoc = await FirebaseFirestore.instance
-                              .collection('areas')
-                              .doc(areaRef)
-                              .get();
+                          areaDoc = await FirebaseFirestore.instance.collection('areas').doc(areaRef).get();
                         }
                         address = (areaDoc?.data() as Map<String, dynamic>?)?['address'] ?? 'Không có địa chỉ';
                       }
@@ -157,11 +247,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   builder: (context, addrSnap) {
                     final address = addrSnap.data ?? 'Đang tải...';
                     final shortText = '$subtitle - $fieldName';
+
+                    // Format time slot using helper
+                    final formattedTimeSlot = formatTimeSlot(rawTimeSlot);
+
                     final fullText = '''
 $subtitle
 $fieldName
 Địa chỉ: $address
-Khung giờ: $timeSlot
+Khung giờ: $formattedTimeSlot
 Hình thức thanh toán: $paymentMethod
 '''.trim();
 
@@ -254,10 +348,7 @@ Hình thức thanh toán: $paymentMethod
 
   Future<void> _markAsRead(BuildContext context, String docId) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('notifications')
-          .doc(docId)
-          .update({'is_read': true});
+      await FirebaseFirestore.instance.collection('notifications').doc(docId).update({'is_read': true});
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
