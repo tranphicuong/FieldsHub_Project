@@ -1,4 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart'; // Thêm để định dạng Timestamp
 
 class OrdersMainScreen extends StatefulWidget {
   const OrdersMainScreen({super.key});
@@ -10,38 +13,14 @@ class OrdersMainScreen extends StatefulWidget {
 class _OrdersMainScreenState extends State<OrdersMainScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-
-  final List<Map<String, dynamic>> orders = [
-    {
-      "name": "Trương Ngọc Doanh",
-      "phone": "0987-123-456",
-      "note": "khách hàng có 3 số chú ý",
-      "method": "Thanh Toán: 100.000vnđ",
-      "time": "16:00(19/5/2025)-18:00(19/5/2025)",
-      "address": "702, đường Nguyễn Giáp, phường Hiệp Phú, TP. Thủ Đức",
-      "status": "Cọc trước",
-      "statusColor": Colors.red,
-      "type": "Bida",
-      "id": "8891"
-    },
-    {
-      "name": "Bùi Thành Nhật",
-      "phone": "0987-123-456",
-      "note": "khách hàng có 3 số chú ý",
-      "method": "Thanh Toán: 350.000vnđ",
-      "time": "16:00(19/5/2025)-18:00(19/5/2025)",
-      "address": "702, Nguyễn Giáp, Hiệp Phú, Thủ Đức",
-      "status": "Đã thanh toán",
-      "statusColor": Colors.green,
-      "type": "Bóng Đá",
-      "id": "2211"
-    },
-  ];
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  bool _isDebugMode = true; // Chế độ gỡ lỗi, có thể tắt sau khi xong
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    print("User ID hiện tại: ${_auth.currentUser?.uid}");
   }
 
   @override
@@ -50,189 +29,300 @@ class _OrdersMainScreenState extends State<OrdersMainScreen>
     super.dispose();
   }
 
+  Stream<QuerySnapshot> _getBookingsStream(String statusFilter) {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) {
+      print("Không có người dùng được xác thực!");
+      return const Stream.empty();
+    }
+    print("Truy vấn với user_id: /users/${currentUser.uid}, status_filter: $statusFilter");
+
+    if (_isDebugMode) {
+      return FirebaseFirestore.instance
+          .collection('bookings')
+          .orderBy('created_at', descending: true)
+          .snapshots();
+    } else {
+      if (statusFilter == "Lịch sử") {
+        // "Lịch sử" bao gồm các trạng thái đã kết thúc
+        return FirebaseFirestore.instance
+            .collection('bookings')
+            .where('user_id', isEqualTo: '/users/${currentUser.uid}')
+            .where('status', whereIn: ['Hoàn thành', 'Bị từ chối'])
+            .orderBy('created_at', descending: true)
+            .snapshots();
+      } else {
+        return FirebaseFirestore.instance
+            .collection('bookings')
+            .where('user_id', isEqualTo: '/users/${currentUser.uid}')
+            .where('status', isEqualTo: statusFilter)
+            .orderBy('created_at', descending: true)
+            .snapshots();
+      }
+    }
+  }
+
+  // Định dạng Timestamp thành chuỗi ngày giờ
+  String _formatTimestamp(Timestamp? timestamp) {
+    if (timestamp == null) return "N/A";
+    final DateTime dateTime = timestamp.toDate();
+    return DateFormat('dd/MM/yyyy HH:mm').format(dateTime);
+  }
+
+  // Lấy địa chỉ từ collection fields dựa trên field_name
+   Future<String> _getAddressFromField(Map<String, dynamic> fieldData, String fieldId) async {
+  String address = (fieldData['diaChi'] as String?) ?? '';
+  if (address.isEmpty || address == '—') {
+    try {
+      // Lấy tham chiếu area_id từ document field
+      dynamic areaRef = fieldData['area_id'];
+      DocumentSnapshot? areaDoc;
+
+      if (areaRef is DocumentReference) {
+        areaDoc = await areaRef.get();
+      } else if (areaRef is String) {
+        areaDoc = await FirebaseFirestore.instance
+            .collection('areas')
+            .doc(areaRef)
+            .get();
+      }
+
+      // Nếu tìm được document area thì lấy địa chỉ
+      address = (areaDoc?.data() as Map<String, dynamic>?)?['address'] as String? ??
+          'Không có địa chỉ';
+    } catch (e) {
+      debugPrint('Lỗi fetch address cho field $fieldId: $e');
+      address = 'Không xác định';
+    }
+  }
+  return address;
+}
+
+
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'Chờ xác nhận':
+        return Colors.orange;
+      case 'Đã xác nhận':
+        return Colors.green;
+      case 'Đang sử dụng':
+        return Colors.blue;
+      case 'Hoàn thành':
+        return Colors.grey;
+      case 'Bị từ chối':
+        return Colors.red;
+      default:
+        return Colors.black54;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold( // ✅ Thay Container bằng Scaffold
+    return Scaffold(
       backgroundColor: const Color(0xFFB7D8F9),
-      body: SafeArea(
-        child: Column(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF004A8E),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () {
+            // Quay lại màn hình trước (Dashboard)
+            Navigator.pop(context);
+          },
+        ),
+        title: const Row(
           children: [
-            // --- AppBar tự thiết kế ---
-            Container(
-              color: const Color(0xFF004A8E),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back, color: Colors.black),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                      const SizedBox(width: 4),
-                      const Text(
-                        'Đơn đặt của tôi',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(30),
-                      border: Border.all(color: Colors.blue, width: 1),
-                    ),
-                    child: Row(
-                      children: const [
-                        Icon(Icons.warning_amber_rounded,
-                            color: Colors.blue, size: 18),
-                        SizedBox(width: 4),
-                        Text(
-                          "Báo lỗi",
-                          style: TextStyle(color: Colors.blue, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // --- TabBar ---
-            Container(
-              color: const Color(0xFFE8F3FF),
-              child: TabBar(
-                controller: _tabController,
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.black87,
-                indicator: BoxDecoration(
-                  color: Colors.blue[700],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                labelStyle:
-                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                tabs: const [
-                  Tab(text: "Chờ xác nhận"),
-                  Tab(text: "Đã xác nhận"),
-                  Tab(text: "Đang sử dụng"),
-                  Tab(text: "Lịch sử"),
-                ],
-              ),
-            ),
-
-            // --- Nội dung Tab ---
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildOrderList("Chờ xác nhận"),
-                  _buildOrderList("Đã xác nhận"),
-                  _buildOrderList("Đang sử dụng"),
-                  _buildOrderList("Lịch sử"),
-                ],
+            Icon(Icons.sports_soccer, color: Colors.white),
+            SizedBox(width: 8),
+            Text(
+              'Quản lý đơn đặt sân',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ],
         ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Container(
+            color: const Color(0xFFE8F3FF),
+            child: TabBar(
+              controller: _tabController,
+              labelColor: Colors.black,
+              unselectedLabelColor: Colors.grey,
+              indicator: BoxDecoration(
+                color: Colors.blue[700],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              tabs: const [
+                Tab(text: "Chờ xác nhận"),
+                Tab(text: "Đã xác nhận"),
+                Tab(text: "Đang sử dụng"),
+                Tab(text: "Lịch sử"),
+              ],
+            ),
+          ),
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildBookingTab("Chờ xác nhận"),
+          _buildBookingTab("Đã xác nhận"),
+          _buildBookingTab("Đang sử dụng"),
+          _buildBookingTab("Lịch sử"),
+        ],
       ),
     );
   }
 
-  Widget _buildOrderList(String status) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: orders.length,
-      itemBuilder: (context, index) {
-        final order = orders[index];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: const [
-              BoxShadow(
-                  color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(order["name"],
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16)),
-                  Text(order["id"],
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, color: Colors.black54)),
-                ],
-              ),
-              Text(order["phone"], style: const TextStyle(fontSize: 12)),
-              Text("Note: ${order["note"]}",
-                  style: const TextStyle(fontSize: 12)),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Text("Phương thức thanh toán: ",
-                      style: TextStyle(fontSize: 12)),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEAF3FB),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      order["method"],
-                      style:
-                          const TextStyle(fontSize: 12, color: Colors.black87),
-                    ),
-                  )
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(order["time"],
-                  style: const TextStyle(fontSize: 12, color: Colors.black87)),
-              Text(order["address"],
-                  style: const TextStyle(fontSize: 12, color: Colors.black54)),
-              const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    order["status"],
-                    style: TextStyle(
-                        color: order["statusColor"],
+  Widget _buildBookingTab(String statusFilter) {
+  return StreamBuilder<QuerySnapshot>(
+    stream: _getBookingsStream(statusFilter),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+        return Center(child: Text('Không có đơn $statusFilter'));
+      }
+
+      final bookings = snapshot.data!.docs;
+      return ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: bookings.length,
+        itemBuilder: (context, index) {
+          final data = bookings[index].data() as Map<String, dynamic>;
+          final docId = bookings[index].id;
+
+          final startTime = _formatTimestamp(data['start_time'] as Timestamp?);
+          final endTime = _formatTimestamp(data['end_time'] as Timestamp?);
+          final fieldName = data['field_name'] ?? 'Tên sân không xác định';
+          final address = data['address'] as String? ?? 'Không có địa chỉ'; // DÙNG TRỰC TIẾP
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5, offset: Offset(0, 2))],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(fieldName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text('Địa chỉ: $address'),
+                Text('Khung giờ: $startTime - $endTime'),
+                Text('Thanh toán: ${data['payment_method'] ?? 'Phương thức không xác định'}'),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      data['status'] ?? 'Trạng thái không xác định',
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 13),
-                  ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[700],
-                      borderRadius: BorderRadius.circular(30),
+                        color: _getStatusColor(data['status'] ?? ''),
+                      ),
                     ),
-                    child: Text(
-                      order["type"],
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  )
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
+                    if (data['status'] == 'Chờ xác nhận')
+                      Row(
+                        children: [
+                          ElevatedButton(
+                            onPressed: () => _confirmBooking(context, docId, data),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8)),
+                            child: const Text("Xác nhận", style: TextStyle(color: Colors.white)),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: () => _rejectBooking(context, docId, data),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8)),
+                            child: const Text("Từ chối", style: TextStyle(color: Colors.white)),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    },
+  );
+}}
+
+  /// ✅ Xác nhận đơn đặt sân
+  Future<void> _confirmBooking(
+      BuildContext context, String bookingId, Map<String, dynamic> data) async {
+    try {
+      // Tạo DocumentReference cho status "confirmed"
+    final statusRef = FirebaseFirestore.instance
+        .collection('status')
+        .doc('confirmed');
+      await FirebaseFirestore.instance.collection('bookings').doc(bookingId).update({
+        'status': 'Đã xác nhận',
+        'status_id': statusRef,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'title': 'Đơn đặt sân đã được xác nhận!',
+        'subtitle': data['field_name'] ?? '',
+        'field_name': data['field_name'] ?? '',
+        'address': data['address'] ?? '',
+        'time_slot': '${data['start_time']} - ${data['end_time']}',
+        'payment_method': data['payment_method'] ?? '',
+        'is_read': false,
+        'created_at': FieldValue.serverTimestamp(),
+        'user_id': data['user_id'],
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ Đã xác nhận đơn thành công')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi khi xác nhận đơn: $e')),
+      );
+    }
   }
-}
+
+  /// ❌ Từ chối đơn đặt sân
+  Future<void> _rejectBooking(
+      BuildContext context, String bookingId, Map<String, dynamic> data) async {
+    try {
+      final statusRef = FirebaseFirestore.instance
+        .collection('status')
+        .doc('rejected');
+      await FirebaseFirestore.instance.collection('bookings').doc(bookingId).update({
+        'status': 'Bị từ chối',
+        'status_id': statusRef,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'title': 'Đơn đặt sân đã bị từ chối',
+        'subtitle': data['field_name'] ?? '',
+        'field_name': data['field_name'] ?? '',
+        'address': data['address'] ?? '',
+        'time_slot': '${data['start_time']} - ${data['end_time']}',
+        'payment_method': data['payment_method'] ?? '',
+        'is_read': false,
+        'created_at': FieldValue.serverTimestamp(),
+        'user_id': data['user_id'],
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('❌ Đã từ chối đơn đặt sân')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi khi từ chối đơn: $e')),
+      );
+    }
+  }

@@ -1,5 +1,8 @@
-import 'package:fieldshub/user/login_screen.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:fieldshub/Database/email_sevice.dart';
+import 'package:fieldshub/user/login_screen.dart';
 
 class ForgotPassword extends StatefulWidget {
   const ForgotPassword({super.key});
@@ -14,23 +17,137 @@ class _ForgotPasswordState extends State<ForgotPassword> {
   final TextEditingController _newpasswordController = TextEditingController();
   final TextEditingController _repasswordController = TextEditingController();
 
+  String? _otpSent;
+  DateTime? _otpExpire;
+
+  /// 👉 Gửi OTP qua email
+  Future<void> _sendOtp() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Vui lòng nhập email")),
+      );
+      return;
+    }
+
+    try {
+      final otp = EmailService.generateOtp();
+      await EmailService.sendOtpEmail(receiverEmail: email, otp: otp);
+
+      setState(() {
+        _otpSent = otp;
+        _otpExpire = DateTime.now().add(const Duration(minutes: 5));
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Mã OTP đã được gửi đến email")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Gửi OTP thất bại: $e")),
+      );
+    }
+  }
+
+  /// 👉 Xác thực OTP và đổi mật khẩu
+  Future<void> _forgotpassword() async {
+    final email = _emailController.text.trim();
+    final newpassword = _newpasswordController.text.trim();
+    final repassword = _repasswordController.text.trim();
+    final otpInput = _otpController.text.trim();
+
+    if (email.isEmpty ||
+        newpassword.isEmpty ||
+        repassword.isEmpty ||
+        otpInput.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Vui lòng nhập đầy đủ thông tin")),
+      );
+      return;
+    }
+
+    if (newpassword != repassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Mật khẩu nhập lại không khớp")),
+      );
+      return;
+    }
+
+    if (newpassword.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Mật khẩu phải có ít nhất 6 ký tự")),
+      );
+      return;
+    }
+
+    if (_otpSent == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Vui lòng gửi mã OTP")),
+      );
+      return;
+    }
+
+    if (DateTime.now().isAfter(_otpExpire!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Mã OTP đã hết hạn")),
+      );
+      return;
+    }
+
+    if (otpInput != _otpSent) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Mã OTP không chính xác")),
+      );
+      return;
+    }
+
+    try {
+      /// 📡 Gọi API Node.js để đổi mật khẩu
+      final response = await http.post(
+        Uri.parse('http://10.0.2.2:3000/reset-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          'newPassword': newpassword,
+        }),
+      );
+
+      final result = jsonDecode(response.body);
+
+      if (result['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Đổi mật khẩu thành công")),
+        );
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Lỗi: ${result['message']}")),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Lỗi khi đổi mật khẩu: $e")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFE3F2FD),
       body: Stack(
         children: [
-          //hinh tron cua nen
-         Positioned(top: -100, left: -30, child: _circle(235)),
+          Positioned(top: -100, left: -30, child: _circle(235)),
           Positioned(top: -50, left: 170, child: _circle(280)),
           Positioned(bottom: -120, left: -60, child: _circle(220)),
-          //noi dung
           SingleChildScrollView(
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 30,
-                vertical: 110,
-              ),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 30, vertical: 110),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -50,11 +167,10 @@ class _ForgotPasswordState extends State<ForgotPassword> {
                     icon: Icons.email_outlined,
                     hint: "abc123@gmail.com",
                   ),
-                  const SizedBox(height: 0.5),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton(
-                      onPressed: () {},
+                      onPressed: _sendOtp,
                       child: const Text(
                         "Send Confirmation Code Via Email",
                         style: TextStyle(
@@ -65,7 +181,6 @@ class _ForgotPasswordState extends State<ForgotPassword> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
                   _textfield(
                     controller: _otpController,
                     label: "OTP",
@@ -86,18 +201,10 @@ class _ForgotPasswordState extends State<ForgotPassword> {
                     obscure: true,
                   ),
                   const SizedBox(height: 10),
-                  //nut submit
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const LoginScreen(),
-                          ),
-                        );
-                      },
+                      onPressed: _forgotpassword,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.indigo,
                         shape: RoundedRectangleBorder(
@@ -120,7 +227,6 @@ class _ForgotPasswordState extends State<ForgotPassword> {
     );
   }
 
-  //widget
   Widget _circle(double size) {
     return Container(
       width: size,
@@ -135,7 +241,6 @@ class _ForgotPasswordState extends State<ForgotPassword> {
     );
   }
 
-  //widget textfield
   Widget _textfield({
     required TextEditingController controller,
     required String label,

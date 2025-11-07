@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fieldshub/owner/main_screen.dart';
 import 'package:fieldshub/user/forgot_password_screen.dart';
-import 'package:fieldshub/user/user_home_screen.dart';
+import 'package:fieldshub/user/main_user_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:fieldshub/user/register_password_screen.dart';
@@ -148,7 +148,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 final rolePath = userDoc.data()?['role_id'];
 
 
-                if (rolePath == null || rolePath.isEmpty) {
+                if (rolePath == null ||rolePath is String && rolePath.isEmpty || rolePath is! String && rolePath is! DocumentReference) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text("Người dùng chưa được gán vai trò"),
@@ -157,7 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   return;
                 }
 
-                final roleRef = FirebaseFirestore.instance.doc(rolePath);
+                final DocumentReference roleRef = rolePath is DocumentReference ? rolePath : FirebaseFirestore.instance.doc(rolePath);
                 final roleDoc = await roleRef.get();
 
                 if(!roleDoc.exists){
@@ -169,14 +169,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   return;
                 }
 
-                final roleName = roleDoc.data()?['name'];
+                final roleName = (roleDoc.data() as Map<String, dynamic>?)?['name'] ?? '';
 
 
                 if (roleName == 'user') {
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const UserHomeScreen(),
+                      builder: (context) => const MainUserScreen(),
                     ),
                   );
                     }else if(roleName =='owner'){

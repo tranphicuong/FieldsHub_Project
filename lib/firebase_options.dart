@@ -90,4 +90,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'sportfields-ff16a.firebasestorage.app',
     measurementId: 'G-BM1M2DJMY2',
   );
+  
 }

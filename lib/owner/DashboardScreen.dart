@@ -1,15 +1,104 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fieldshub/owner/FieldListScreen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart'; 
+import 'package:fieldshub/user/chat_screen.dart';
 import 'package:fieldshub/owner/ManageFieldScreen.dart';
 import 'package:fieldshub/owner/OrderScreen.dart';
 import 'package:fieldshub/owner/RevenueReportScreen.dart';
 import 'package:fieldshub/owner/ReviewScreen.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  String? userName;
+  int _unreadMessagesCount = 3;
+  int _unreadNotificationsCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+    _listenToUnreadNotifications();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      setState(() => userName = 'Khách');
+      return;
+    }
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      setState(() => userName = userDoc.data()?['name'] ?? 'Khách');
+    } catch (e) {
+      print("Error loading user data: $e");
+      setState(() => userName = 'Khách');
+    }
+  }
+
+  void _listenToUnreadNotifications() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    FirebaseFirestore.instance
+        .collection('notifications')
+        .where('user_id', isEqualTo: '/users/${user.uid}')
+        .where('is_read', isEqualTo: false)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        print("Số lượng thông báo chưa đọc: ${snapshot.docs.length} - Time: ${DateFormat('HH:mm:ss').format(DateTime.now())}");
+        setState(() => _unreadNotificationsCount = snapshot.docs.length);
+      },
+      onError: (error) => print("Lỗi truy vấn thông báo: $error"),
+    );
+  }
+
+  Stream<Map<String, int>> _getFieldCounts() {
+  final now = DateTime.now();
+  final startOfDay = DateTime(now.year, now.month, now.day);
+  final endOfDay = startOfDay.add(const Duration(days: 1));
+
+  return FirebaseFirestore.instance
+      .collection('fields')
+      .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+      .where('createdAt', isLessThan: Timestamp.fromDate(endOfDay))
+      .snapshots()
+      .map((snapshot) {
+    int footballCount = 0;
+    int billiardCount = 0;
+
+    for (var doc in snapshot.docs) {
+      final data = doc.data();
+      final sport = (data['sport'] ?? '').toString().toLowerCase();
+
+      if (sport.contains('bong') || sport.contains('football') || sport.contains('soccer')) {
+        footballCount++;
+      } else if (sport.contains('bida') || sport.contains('billiard') || sport.contains('pool')) {
+        billiardCount++;
+      }
+    }
+
+    return {'Bóng Đá': footballCount, 'Bida': billiardCount};
+  });
+}
+
+
+
+
+  @override
   Widget build(BuildContext context) {
+    
     return Scaffold(
       backgroundColor: const Color(0xFFE8F3FF),
       appBar: AppBar(
@@ -22,16 +111,16 @@ class DashboardScreen extends StatelessWidget {
               child: Icon(Icons.person, color: Colors.black),
             ),
             const SizedBox(width: 10),
-            const Column(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   "xin chào",
                   style: TextStyle(color: Colors.white70, fontSize: 12),
                 ),
                 Text(
-                  "Nguyen Van A",
-                  style: TextStyle(
+                  userName ?? "Nguyen Van A",
+                  style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
@@ -40,7 +129,79 @@ class DashboardScreen extends StatelessWidget {
               ],
             ),
             const Spacer(),
-            const Icon(Icons.chat_bubble_outline, color: Colors.white),
+            Stack(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+                  tooltip: "Chat",
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ChatScreen(
+                          fieldId: '',
+                          fieldName: 'Tên sân mặc định',
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                if (_unreadMessagesCount > 0)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        _unreadMessagesCount.toString(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            Stack(
+              children: [
+                if (_unreadNotificationsCount > 0)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        _unreadNotificationsCount.toString(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ],
         ),
       ),
@@ -54,8 +215,6 @@ class DashboardScreen extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
             const SizedBox(height: 10),
-
-            // --- Đánh giá ---
             Container(
               padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(
@@ -76,7 +235,7 @@ class DashboardScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: const [
                         Text(
-                          "Đánh Giá Tháng 9",
+                          "Đánh Giá Tháng 10",
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
@@ -84,7 +243,7 @@ class DashboardScreen extends StatelessWidget {
                         ),
                         SizedBox(height: 5),
                         Text(
-                          "tiếp tục giữ vững phong độ bạn nhé",
+                          "Tiếp tục giữ vững phong độ bạn nhé!",
                           style: TextStyle(fontSize: 13),
                         ),
                         SizedBox(height: 8),
@@ -115,10 +274,7 @@ class DashboardScreen extends StatelessWidget {
                 ],
               ),
             ),
-
             const SizedBox(height: 20),
-
-            // --- Menu 4 chức năng ---
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -153,7 +309,7 @@ class DashboardScreen extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const ManageFieldScreen(),
+                        builder: (_) =>  ManageFieldScreen(),
                       ),
                     );
                   },
@@ -172,23 +328,60 @@ class DashboardScreen extends StatelessWidget {
                 ),
               ],
             ),
-
             const SizedBox(height: 20),
+                        StreamBuilder<Map<String, int>>(
+              stream: _getFieldCounts(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: Text("Không có dữ liệu sân hoặc lỗi kết nối"));
+                }
 
-            // --- Danh sách sân ---
-            _buildFieldItem(
-              icon: Icons.sports_soccer,
-              title: "Sân Bóng",
-              location: "702, Nguyễn Giáp, Hiệp Phú, Thủ Đức",
-              details: "5:00 - 23:00",
-              sub: "5 Sân",
-            ),
-            _buildFieldItem(
-              icon: Icons.sports_bar,
-              title: "Bàn Bida",
-              location: "702, Nguyễn Giáp, Hiệp Phú, Thủ Đức",
-              details: "24/24",
-              sub: "10 Bàn",
+                final fieldCounts = snapshot.data!;
+                final footballCount = fieldCounts['Bóng Đá'] ?? 0;
+                final billiardCount = fieldCounts['Bida'] ?? 0;
+              
+                return Column(
+                  children: [
+                    _buildFieldItem(
+                      icon: Icons.sports_soccer,
+                      title: "Sân Bóng",
+                      location: "702, Nguyễn Giáp, Hiệp Phú, Thủ Đức",
+                      details: "5:00 - 23:00",
+                      sub: "$footballCount Sân",
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const DanhSachSanScreen(
+                              initialFilter: 'Bóng Đá', 
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    _buildFieldItem(
+                      icon: Icons.sports_bar,
+                      title: "Bàn Bida",
+                      location: "702, Nguyễn Giáp, Hiệp Phú, Thủ Đức",
+                      details: "24/24",
+                      sub: "$billiardCount Bàn",
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const DanhSachSanScreen(
+                              initialFilter: 'Bida', 
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                );
+              },
             ),
 
             const SizedBox(height: 15),
@@ -196,15 +389,12 @@ class DashboardScreen extends StatelessWidget {
               "Dashboard",
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
-
             const SizedBox(height: 15),
-
-            // --- Biểu đồ ---
             const Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _PieChart(title: "Doanh Thu Tháng 9"),
-                _PieChart(title: "Doanh Thu Ngày 18/9"),
+                _PieChart(title: "Doanh Thu Tháng 10"),
+                _PieChart(title: "Doanh Thu Ngày 22/10"),
               ],
             ),
           ],
@@ -250,8 +440,12 @@ class DashboardScreen extends StatelessWidget {
     required String location,
     required String details,
     required String sub,
+     required VoidCallback onTap, 
   }) {
-    return Container(
+   return InkWell(
+    onTap: onTap, 
+    borderRadius: BorderRadius.circular(12),
+    child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -302,7 +496,8 @@ class DashboardScreen extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ),
+   );
   }
 }
 

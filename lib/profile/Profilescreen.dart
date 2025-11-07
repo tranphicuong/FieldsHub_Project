@@ -1,35 +1,26 @@
 import 'dart:io';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fieldshub/user/login_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-// Biến toàn cục để cập nhật tên trên màn hình chính
-String? userName;
-
-class ProfileMainScreen extends StatefulWidget {
-  const ProfileMainScreen({super.key});
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({Key? key}) : super(key: key);
 
   @override
-  State<ProfileMainScreen> createState() => _ProfileScreenState();
+  State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileMainScreen> {
+class _ProfileScreenState extends State<ProfileScreen> {
   bool isEditing = false;
   String gender = "Nam";
   File? _imageFile;
-  String? _imageUrl;
-
-  // Controller cho các trường thông tin
+  final currentUser = FirebaseAuth.instance.currentUser;
   final TextEditingController nameController = TextEditingController();
   final TextEditingController birthController = TextEditingController();
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController addressController = TextEditingController();
-
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   @override
   void initState() {
@@ -38,12 +29,10 @@ class _ProfileScreenState extends State<ProfileMainScreen> {
   }
 
   Future<void> _loadUserData() async {
-    final User? currentUser = _auth.currentUser;
     if (currentUser == null) return;
-
-    final userDoc = await _firestore
+    final userDoc = await FirebaseFirestore.instance
         .collection('users')
-        .doc(currentUser.uid)
+        .doc(currentUser!.uid)
         .get();
     if (userDoc.exists) {
       setState(() {
@@ -59,8 +48,6 @@ class _ProfileScreenState extends State<ProfileMainScreen> {
         } else {
           birthController.text = "";
         }
-        _imageUrl = data['imageUrl']; // Lấy URL ảnh từ Firestore
-        userName = data['name']; // Cập nhật tên toàn cục
       });
     }
   }
@@ -71,25 +58,6 @@ class _ProfileScreenState extends State<ProfileMainScreen> {
       setState(() {
         _imageFile = File(pickedFile.path);
       });
-    }
-  }
-
-  Future<String?> _uploadImage() async {
-    if (_imageFile == null) return null;
-    final User? currentUser = _auth.currentUser;
-    if (currentUser == null) return null;
-
-    try {
-      final storageRef = _storage
-          .ref()
-          .child('profile_images/${currentUser.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg');
-      await storageRef.putFile(_imageFile!);
-      return await storageRef.getDownloadURL();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi tải ảnh lên: $e')),
-      );
-      return null;
     }
   }
 
@@ -127,60 +95,40 @@ class _ProfileScreenState extends State<ProfileMainScreen> {
   }
 
   Future<void> _saveUserData() async {
-    final User? currentUser = _auth.currentUser;
     if (currentUser == null) return;
-
     try {
-      String? imageUrl = _imageUrl;
-      if (_imageFile != null) {
-        imageUrl = await _uploadImage(); // Tải ảnh mới lên và lấy URL
-      }
-
       Timestamp? dobTimestamp;
       if (birthController.text.isNotEmpty) {
         final parts = birthController.text.split('/');
+
         if (parts.length == 3) {
-          try {
-            int day = int.parse(parts[0]);
-            int month = int.parse(parts[1]);
-            int year = int.parse(parts[2]);
-            dobTimestamp = Timestamp.fromDate(DateTime(year, month, day));
-          } catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Định dạng ngày sinh không hợp lệ (dd/MM/yyyy)')),
-            );
-            return; // Dừng lưu nếu định dạng sai
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Vui lòng nhập ngày sinh đúng định dạng (dd/MM/yyyy)')),
-          );
-          return; // Dừng lưu nếu không đủ 3 phần
+          int day = int.parse(parts[0]);
+          int month = int.parse(parts[1]);
+          int year = int.parse(parts[2]);
+          dobTimestamp = Timestamp.fromDate(DateTime(year, month, day));
         }
-      } // Nếu trống, dobTimestamp sẽ là null
+      }
 
-      print('Saving data - Name: ${nameController.text}, DOB: $dobTimestamp'); // Debug log
-      await _firestore.collection('users').doc(currentUser.uid).update({
-        'name': nameController.text,
-        'dob': dobTimestamp,
-        'phone': phoneController.text,
-        'address': addressController.text,
-        'gender': gender,
-        if (imageUrl != null) 'imageUrl': imageUrl,
-      });
-
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser!.uid)
+          .update({
+            'name': nameController.text,
+            'dob': dobTimestamp,
+            'phone': phoneController.text,
+            'address': addressController.text,
+            'gender': gender,
+          });
       setState(() {
         isEditing = false;
-        _imageUrl = imageUrl; // Cập nhật URL ảnh cục bộ
-        userName = nameController.text; // Cập nhật tên toàn cục
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Đã lưu thông tin thành công')),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi lưu thông tin: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Lỗi lưu thông tin: $e')));
     }
   }
 
@@ -218,60 +166,64 @@ class _ProfileScreenState extends State<ProfileMainScreen> {
       backgroundColor: Colors.lightBlue[0xFF004A8E],
       appBar: AppBar(
         backgroundColor: const Color.fromARGB(255, 19, 153, 215),
-        centerTitle: true,
         elevation: 0,
         title: const Text(
           "Hồ sơ cá nhân",
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
         ),
+        centerTitle: true,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Ảnh đại diện
             Column(
               children: [
                 GestureDetector(
-                  onTap: isEditing ? _showImagePickerOptions : null,
+                  onTap: _showImagePickerOptions,
                   child: CircleAvatar(
                     radius: 50,
                     backgroundColor: Colors.blue[200],
                     backgroundImage: _imageFile != null
                         ? FileImage(_imageFile!)
-                        : _imageUrl != null
-                            ? NetworkImage(_imageUrl!) as ImageProvider
-                            : null,
-                    child: _imageFile == null && _imageUrl == null
-                        ? const Icon(Icons.person, size: 70, color: Colors.white)
+                        : null,
+                    child: _imageFile == null
+                        ? const Icon(
+                            Icons.person,
+                            size: 70,
+                            color: Colors.white,
+                          )
                         : null,
                   ),
                 ),
-                if (isEditing)
-                  TextButton(
-                    onPressed: _showImagePickerOptions,
-                    child: const Text("Sửa",
-                        style: TextStyle(color: Colors.black54)),
+                TextButton(
+                  onPressed: _showImagePickerOptions,
+                  child: const Text(
+                    "Sửa",
+                    style: TextStyle(color: Colors.black54),
                   ),
+                ),
               ],
             ),
             const Divider(thickness: 1, color: Colors.black26),
             const SizedBox(height: 10),
-
-            // Các ô nhập liệu
             _buildTextField("Tên", nameController, enabled: isEditing),
             const SizedBox(height: 10),
             _buildTextField("Năm sinh", birthController, enabled: isEditing),
             const SizedBox(height: 10),
-            _buildTextField("Sđt", phoneController, enabled: isEditing),
+            _buildTextField(
+              "Số điện thoại",
+              phoneController,
+              enabled: isEditing,
+            ),
             const SizedBox(height: 10),
-
-            // Giới tính
             Align(
               alignment: Alignment.centerLeft,
-              child: const Text("Giới tính",
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              child: const Text(
+                "Giới tính",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
             Row(
               children: [
@@ -295,30 +247,87 @@ class _ProfileScreenState extends State<ProfileMainScreen> {
               ],
             ),
             const SizedBox(height: 10),
-
-            // Địa chỉ
-            _buildTextField("Địa chỉ", addressController,
-                enabled: isEditing, maxLines: 2),
+            _buildTextField(
+              "Địa chỉ",
+              addressController,
+              enabled: isEditing,
+              maxLines: 2,
+            ),
             const SizedBox(height: 20),
-
-            // Nút chỉnh sửa thông tin
-            ElevatedButton.icon(
-              onPressed: () {
-                if (isEditing) {
-                  _saveUserData();
-                } else {
-                  setState(() => isEditing = true);
-                }
-              },
-              icon: const Icon(Icons.edit),
-              label: Text(isEditing ? "Lưu thông tin" : "Chỉnh sửa thông tin"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.pink[100],
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15)),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      final showLogout = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Xác nhận đăng xuất'),
+                          content: const Text(
+                            'Bạn có chắc chắn muốn đăng xuất không?',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Hủy'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Đăng xuất'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (showLogout == true) {
+                        await FirebaseAuth.instance.signOut();
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const LoginScreen(),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Đăng xuất'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: isEditing
+                        ? _saveUserData
+                        : () => setState(() => isEditing = true),
+                    icon: const Icon(Icons.edit),
+                    label: Text(
+                      isEditing ? "Lưu thông tin" : "Chỉnh sửa thông tin",
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.pink[100],
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 50),
           ],
