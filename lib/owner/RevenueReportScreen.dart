@@ -23,14 +23,41 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
   final Map<String, String> _sportCache = {};
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'vi', symbol: 'đ');
 
+  // HÀM CHUẨN HÓA GIỜ VIỆT NAM
+  DateTime _toVietnamTime(Timestamp? timestamp) {
+    if (timestamp == null) return DateTime.now();
+    return timestamp.toDate().add(const Duration(hours: 7)); // UTC → GMT+7
+  }
+
+  DateTime _vietnamNow() => DateTime.now();
+
+  DateTime _startOfDayVN() {
+    final now = _vietnamNow();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  DateTime _endOfDayVN() {
+    final now = _vietnamNow();
+    return DateTime(now.year, now.month, now.day, 23, 59, 59);
+  }
+
   @override
   void initState() {
     super.initState();
-    _autoFixOldData(); 
+    _initializeHourlyBarData();
+    _autoFixOldData();
     _listenToRevenueUpdates();
   }
 
-  // ✅ Tự động fix sport_id cũ
+  void _initializeHourlyBarData() {
+    hourlyBarData = List.generate(24, (i) {
+      return BarChartGroupData(
+        x: i,
+        barRods: [BarChartRodData(toY: 0, color: Colors.transparent)],
+      );
+    });
+  }
+
   Future<void> _autoFixOldData() async {
     try {
       final fieldsSnap = await _firestore.collection('fields').get();
@@ -58,7 +85,8 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
           await fieldDoc.reference.set({'sport_id': sportRef}, SetOptions(merge: true));
         }
 
-        final sportId = fieldData['sport_id'] ?? (fieldData['sport'] != null ? 'sports/${_mapOldSport(fieldData['sport'])}' : 'sports/Khác');
+        final sportId = fieldData['sport_id'] ??
+            (fieldData['sport'] != null ? 'sports/${_mapOldSport(fieldData['sport'])}' : 'sports/Khác');
 
         final bookingsSnap = await _firestore
             .collection('bookings')
@@ -85,34 +113,60 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
     return 'Khác';
   }
 
-  // ✅ Lắng nghe thay đổi doanh thu
+  // REALTIME: HÔM NAY + THÁNG
   void _listenToRevenueUpdates() {
-    final now = DateTime.now();
+    final startOfDay = _startOfDayVN();
+    final endOfDay = _endOfDayVN();
 
-    // Hôm nay
-    final startOfDay = DateTime(now.year, now.month, now.day);
-    final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    // CHUYỂN VỀ UTC ĐỂ LỌC CHÍNH XÁC TRÊN FIRESTORE
+    final startOfDayUtc = startOfDay.subtract(const Duration(hours: 7));
+    final endOfDayUtc = endOfDay.subtract(const Duration(hours: 7));
 
     _firestore
         .collection('bookings')
         .where('status', isEqualTo: 'Đã xác nhận')
-        .where('start_time', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-        .where('start_time', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+        .where('start_time', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDayUtc))
+        .where('start_time', isLessThanOrEqualTo: Timestamp.fromDate(endOfDayUtc))
         .snapshots()
-        .listen((snapshot) {
-      _updateDailyPieChart(snapshot);
-      _updateHourlyBarChart(snapshot);
+        .listen((snapshot) async {
+      // XỬ LÝ DELTA (realtime)
+      for (var change in snapshot.docChanges) {
+        final data = change.doc.data() as Map<String, dynamic>?;
+        if (data == null) continue;
+
+        final startTimeLocal = _toVietnamTime(data['start_time']);
+        final hour = startTimeLocal.hour;
+        final price = (data['price'] as num?)?.toDouble() ?? 0;
+        final sportId = data['sport_id'];
+
+        if (hour < 0 || hour >= 24) continue;
+
+        if (change.type == DocumentChangeType.added || change.type == DocumentChangeType.modified) {
+          await _updateHourlyBarForBooking(hour, price, sportId, isAdd: true);
+          _todayTotal += price;
+        } else if (change.type == DocumentChangeType.removed) {
+          await _updateHourlyBarForBooking(hour, price, sportId, isAdd: false);
+          _todayTotal -= price;
+        }
+      }
+
+      // Cập nhật biểu đồ tròn + fallback
+      await _updateDailyPieChart(snapshot);
+      await _updateHourlyBarChart(snapshot);
     });
 
-    // Tháng này
-    final startOfMonth = DateTime(now.year, now.month, 1);
-    final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+    // THÁNG NÀY
+    final startOfMonth = DateTime(_vietnamNow().year, _vietnamNow().month, 1);
+    final endOfMonth = DateTime(_vietnamNow().year, _vietnamNow().month + 1, 0, 23, 59, 59);
+
+    final startOfMonthUtc = startOfMonth.subtract(const Duration(hours: 7));
+    final endOfMonthUtc = endOfMonth.subtract(const Duration(hours: 7));
 
     _firestore
         .collection('bookings')
         .where('status', isEqualTo: 'Đã xác nhận')
-        .where('start_time', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
-        .where('start_time', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
+        .where('start_time', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonthUtc))
+        .where('start_time', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonthUtc))
         .snapshots()
         .listen((snapshot) {
       _updateMonthlyPieChart(snapshot);
@@ -120,9 +174,43 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
     });
   }
 
+  // CẬP NHẬT 1 CỘT GIỜ (realtime)
+  Future<void> _updateHourlyBarForBooking(int hour, double price, dynamic sportId, {required bool isAdd}) async {
+  final sportName = await _getSportName(sportId);
+  final color = _getSportColor(sportName);
+
+  setState(() {
+    final newHourlyData = List<BarChartGroupData>.from(hourlyBarData);
+    final currentGroup = newHourlyData[hour];
+    final currentRods = List<BarChartRodData>.from(currentGroup.barRods);
+
+    int sportIndex = currentRods.indexWhere((rod) => rod.color == color);
+
+    double currentValue = sportIndex >= 0 ? currentRods[sportIndex].toY : 0;
+    double newValue = isAdd ? currentValue + price : currentValue - price;
+    if (newValue < 0) newValue = 0;
+
+    if (sportIndex >= 0) {
+      currentRods[sportIndex] = BarChartRodData(toY: newValue, color: color, width: 14);
+    } else if (newValue > 0) {
+      currentRods.add(BarChartRodData(toY: newValue, color: color, width: 14));
+    } else if (sportIndex >= 0 && newValue == 0) {
+      currentRods.removeAt(sportIndex);
+    }
+
+    newHourlyData[hour] = BarChartGroupData(
+      x: hour,
+      barRods: currentRods.isNotEmpty
+          ? currentRods
+          : [BarChartRodData(toY: 0, color: Colors.transparent)],
+    );
+
+    hourlyBarData = newHourlyData; // ← Quan trọng: gán lại list mới
+  });
+}
+
   Future<String> _getSportName(dynamic sportId) async {
     if (sportId == null) return 'Khác';
-
     String path = sportId is DocumentReference ? sportId.path : sportId.toString();
     if (_sportCache.containsKey(path)) return _sportCache[path]!;
 
@@ -136,6 +224,7 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
     } catch (e) {
       debugPrint('Lỗi lấy sport: $e');
     }
+    _sportCache[path] = 'Khác';
     return 'Khác';
   }
 
@@ -148,41 +237,8 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
     return Colors.grey.shade600;
   }
 
-  void _updateMonthlyPieChart(QuerySnapshot snapshot) async {
-    double total = 0;
-    final Map<String, double> sportRevenue = {};
-
-    for (var doc in snapshot.docs) {
-      final data = doc.data() as Map<String, dynamic>;
-      final price = (data['price'] as num?)?.toDouble() ?? 0;
-      final sportId = data['sport_id'];
-      final sportName = await _getSportName(sportId);
-
-      total += price;
-      sportRevenue[sportName] = (sportRevenue[sportName] ?? 0) + price;
-    }
-
-    if (mounted) {
-      setState(() {
-        monthlyPieData = sportRevenue.entries.map((e) {
-          final percentage = total > 0 ? (e.value / total) * 100 : 0;
-          return PieChartSectionData(
-            color: _getSportColor(e.key),
-            value: e.value,
-            title: '${percentage.toStringAsFixed(0)}%',
-            radius: 40,
-            titleStyle: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.bold),
-          );
-        }).toList();
-
-        if (monthlyPieData.isEmpty) {
-          monthlyPieData = [PieChartSectionData(color: Colors.grey.shade400, value: 100, title: '0%', radius: 40)];
-        }
-      });
-    }
-  }
-
-  void _updateDailyPieChart(QuerySnapshot snapshot) async {
+  // BIỂU ĐỒ TRÒN HÔM NAY
+  Future<void> _updateDailyPieChart(QuerySnapshot snapshot) async {
     double total = 0;
     final Map<String, double> sportRevenue = {};
 
@@ -217,6 +273,41 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
     }
   }
 
+  // BIỂU ĐỒ TRÒN THÁNG
+  Future<void> _updateMonthlyPieChart(QuerySnapshot snapshot) async {
+    double total = 0;
+    final Map<String, double> sportRevenue = {};
+
+    for (var doc in snapshot.docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final price = (data['price'] as num?)?.toDouble() ?? 0;
+      final sportId = data['sport_id'];
+      final sportName = await _getSportName(sportId);
+
+      total += price;
+      sportRevenue[sportName] = (sportRevenue[sportName] ?? 0) + price;
+    }
+
+    if (mounted) {
+      setState(() {
+        monthlyPieData = sportRevenue.entries.map((e) {
+          final percentage = total > 0 ? (e.value / total) * 100 : 0;
+          return PieChartSectionData(
+            color: _getSportColor(e.key),
+            value: e.value,
+            title: '${percentage.toStringAsFixed(0)}%',
+            radius: 40,
+            titleStyle: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.bold),
+          );
+        }).toList();
+
+        if (monthlyPieData.isEmpty) {
+          monthlyPieData = [PieChartSectionData(color: Colors.grey.shade400, value: 100, title: '0%', radius: 40)];
+        }
+      });
+    }
+  }
+
   void _updateMonthlyTotal(QuerySnapshot snapshot) {
     double total = 0;
     for (var doc in snapshot.docs) {
@@ -227,39 +318,38 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
     if (mounted) setState(() => _monthlyTotal = total);
   }
 
-  void _updateHourlyBarChart(QuerySnapshot snapshot) async {
-    final Map<int, Map<String, double>> hourlyBySport = {};
+  // BIỂU ĐỒ CỘT GIỜ (fallback)
+  Future<void> _updateHourlyBarChart(QuerySnapshot snapshot) async {
+  final Map<int, Map<String, double>> hourlyBySport = {};
 
-    for (var doc in snapshot.docs) {
-      final data = doc.data() as Map<String, dynamic>;
-      final startTime = (data['start_time'] as Timestamp?)?.toDate();
-      if (startTime == null) continue;
+  for (var doc in snapshot.docs) {
+    final data = doc.data() as Map<String, dynamic>;
+    final startTimeLocal = _toVietnamTime(data['start_time']);
+    final hour = startTimeLocal.hour;
+    final price = (data['price'] as num?)?.toDouble() ?? 0;
+    final sportId = data['sport_id'];
+    final sportName = await _getSportName(sportId);
 
-      final hour = startTime.hour;
-      final price = (data['price'] as num?)?.toDouble() ?? 0;
-      final sportId = data['sport_id'];
-      final sportName = await _getSportName(sportId);
-
-      hourlyBySport.putIfAbsent(hour, () => {});
-      hourlyBySport[hour]![sportName] = (hourlyBySport[hour]![sportName] ?? 0) + price;
-    }
-
-    if (mounted) {
-      setState(() {
-        hourlyBarData = List.generate(24, (i) {
-          final hourData = hourlyBySport[i] ?? {};
-          final rods = hourData.entries.map((e) {
-            return BarChartRodData(toY: e.value, color: _getSportColor(e.key), width: 14);
-          }).toList();
-
-          return BarChartGroupData(
-            x: i,
-            barRods: rods.isNotEmpty ? rods : [BarChartRodData(toY: 0, color: Colors.transparent)],
-          );
-        });
-      });
-    }
+    hourlyBySport.putIfAbsent(hour, () => {});
+    hourlyBySport[hour]![sportName] = (hourlyBySport[hour]![sportName] ?? 0) + price;
   }
+
+  if (mounted) {
+    setState(() {
+      hourlyBarData = List.generate(24, (i) {
+        final hourData = hourlyBySport[i] ?? {};
+        final rods = hourData.entries.map((e) {
+          return BarChartRodData(toY: e.value, color: _getSportColor(e.key), width: 14);
+        }).toList();
+
+        return BarChartGroupData(
+          x: i,
+          barRods: rods.isNotEmpty ? rods : [BarChartRodData(toY: 0, color: Colors.transparent)],
+        );
+      });
+    });
+  }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -281,7 +371,7 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
               const Text("Dashboard", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
               const SizedBox(height: 20),
 
-              // ✅ Biểu đồ tròn - hôm nay
+              // BIỂU ĐỒ TRÒN HÔM NAY
               Card(
                 elevation: 4,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -290,7 +380,7 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
                   child: Column(
                     children: [
                       Text(
-                        "Doanh thu hôm nay - ${DateFormat('dd/MM/yyyy').format(DateTime.now())}",
+                        "Doanh thu hôm nay - ${DateFormat('dd/MM/yyyy').format(_vietnamNow())}",
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 12),
@@ -312,7 +402,7 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
 
               const SizedBox(height: 24),
 
-              // ✅ Tổng doanh thu tháng
+              // TỔNG THÁNG
               Card(
                 elevation: 4,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -333,7 +423,7 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
 
               const SizedBox(height: 30),
 
-              // ✅ Biểu đồ cột doanh thu theo giờ
+              // BIỂU ĐỒ CỘT GIỜ
               const Text("Doanh thu theo giờ (0h - 23h)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
 
@@ -379,10 +469,8 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
                                   },
                                 ),
                               ),
-                              rightTitles:
-                                  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                              topTitles:
-                                  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                             ),
                             barGroups: hourlyBarData,
                             barTouchData: BarTouchData(
@@ -394,10 +482,7 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
                                   final sport = _getSportFromColor(rod.color!);
                                   return BarTooltipItem(
                                     '$hour:00\n${_currencyFormat.format(rod.toY)}\n($sport)',
-                                    const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                    const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                                   );
                                 },
                               ),

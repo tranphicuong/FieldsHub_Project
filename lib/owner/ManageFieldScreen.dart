@@ -194,13 +194,15 @@ class _ManageFieldScreenState extends State<ManageFieldScreen> {
         final snapshot = await uploadTask.whenComplete(() {});
         imageUrl = await snapshot.ref.getDownloadURL();
       }
-
+      final ownerRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
       final price = int.tryParse(priceController.text.trim()) ?? 0;
       final userId = user.uid; // Lấy UID của người dùng
       final fieldData = {
         "area_id": FirebaseFirestore.instance.doc(areaId!), // ✅ đúng, tạo DocumentReference
-        "open_time": Timestamp.fromDate(DateTime(1970, 1, 1)), // Biểu thị 24/24
-        "close_time": Timestamp.fromDate(DateTime(9999, 12, 31)), // Biểu thị 24/24
+        "open_time": Timestamp.fromDate(
+    DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 0, 0)), // 00:00
+"close_time": Timestamp.fromDate(
+    DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 23, 59)), // 23:59
         "description": noteController.text.trim(),
         "name": nameController.text.trim(),
         "phone": phoneController.text.trim(),
@@ -209,7 +211,7 @@ class _ManageFieldScreenState extends State<ManageFieldScreen> {
         "deposit_percent": double.tryParse(depositController.text.trim()) ?? 0,
         "image": imageUrl ?? '',
         "createdAt": FieldValue.serverTimestamp(),
-        // Xóa ownerId, thay bằng cách lưu owner_id trong areas
+        "owner_id": ownerRef,
       };
 
       final fieldsRef = FirebaseFirestore.instance.collection("fields");

@@ -321,7 +321,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const DanhGiaCuaToiScreen(),
+                        builder: (_) => DanhGiaCuaToiScreen(
+     ownerUserId: FirebaseAuth.instance.currentUser!.uid, // Chỉ truyền ID
+    ),
                       ),
                     );
                   },
