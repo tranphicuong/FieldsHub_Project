@@ -8,7 +8,6 @@ import 'FieldListScreen.dart';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart'; // để dùng kIsWeb
 
-
 class ManageFieldScreen extends StatefulWidget {
   final Map<String, dynamic>? fieldData; // Dữ liệu sân nếu đang sửa
 
@@ -44,14 +43,27 @@ class _ManageFieldScreenState extends State<ManageFieldScreen> {
     _fieldPriceRef = _fetchFieldPriceRef(fieldId); // Lấy tham chiếu giá
     if (widget.fieldData != null) {
       nameController.text = widget.fieldData!['name'] ?? '';
-      addressController.text = widget.fieldData!['diaChi'] ?? '';
+      if (widget.fieldData!['area_id'] is DocumentReference) {
+  areaId = (widget.fieldData!['area_id'] as DocumentReference).path;
+  // Tự động lấy địa chỉ từ areas
+  FirebaseFirestore.instance
+      .doc(areaId!)
+      .get()
+      .then((areaDoc) {
+        if (areaDoc.exists) {
+          final areaData = areaDoc.data() as Map<String, dynamic>;
+          setState(() {
+            addressController.text = areaData['address'] ?? '';
+          });
+        }
+      });
+}
       // Lấy giá từ tham chiếu nếu có
       _loadPriceFromRef(widget.fieldData!['price'] as DocumentReference?);
       phoneController.text = widget.fieldData!['soDienThoai'] ?? '';
       depositController.text = widget.fieldData!['deposit']?.toString() ?? '';
       noteController.text = widget.fieldData!['note'] ?? '';
       selectedCategory = widget.fieldData!['sport'];
-      areaId = widget.fieldData!['area_id'] ?? "/areas/m7MXj6UwRGwOxt4ilk0A"; // Lấy area_id hiện tại
     }
   }
 
@@ -182,42 +194,66 @@ class _ManageFieldScreenState extends State<ManageFieldScreen> {
         final snapshot = await uploadTask.whenComplete(() {});
         imageUrl = await snapshot.ref.getDownloadURL();
       }
-
+      final ownerRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
       final price = int.tryParse(priceController.text.trim()) ?? 0;
+      final userId = user.uid; // Lấy UID của người dùng
       final fieldData = {
-        "area_id": areaId, // Sử dụng areaId đã cập nhật
-        "open_time": Timestamp.fromDate(DateTime(1970, 1, 1)), // Biểu thị 24/24
-        "close_time": Timestamp.fromDate(DateTime(9999, 12, 31)), // Biểu thị 24/24
+        "area_id": FirebaseFirestore.instance.doc(areaId!), // ✅ đúng, tạo DocumentReference
+        "open_time": Timestamp.fromDate(
+    DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 0, 0)), // 00:00
+"close_time": Timestamp.fromDate(
+    DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 23, 59)), // 23:59
         "description": noteController.text.trim(),
         "name": nameController.text.trim(),
-        "diaChi": addressController.text.trim(),
         "phone": phoneController.text.trim(),
         "sport": selectedCategory!,
+        "sport_id": "sports/$selectedCategory",
         "deposit_percent": double.tryParse(depositController.text.trim()) ?? 0,
         "image": imageUrl ?? '',
-        "ownerId": user.uid,
         "createdAt": FieldValue.serverTimestamp(),
+        "owner_id": ownerRef,
       };
 
       final fieldsRef = FirebaseFirestore.instance.collection("fields");
-      DocumentReference fieldRef;
+      late DocumentReference fieldRef;
 
       if (widget.fieldData == null) {
-        // Thêm sân mới và lấy ID
-        fieldRef = await fieldsRef.add(fieldData);
+        fieldRef = await fieldsRef.add(fieldData); // area_id tạm là mặc định
         fieldId = fieldRef.id;
       } else {
         await fieldsRef.doc(widget.fieldData!['id']).update(fieldData);
         fieldId = widget.fieldData!['id'];
       }
 
-      // Cập nhật hoặc tạo tài liệu trong collection "areas"
+      // 🔧 Nếu chưa có areaId hoặc đang dùng mặc định -> tạo mới
       final areasRef = FirebaseFirestore.instance.collection("areas");
-      final areaDocRef = areasRef.doc(areaId?.split('/').last); // Lấy ID từ areaId
-      await areaDocRef.set({
-        "address": addressController.text.trim(), // Cập nhật địa chỉ
-        "updatedAt": FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true)); // Merge để không ghi đè các trường khác
+DocumentReference areaDocRef;
+
+if (areaId == null || areaId == "/areas/m7MXj6UwRGwOxt4ilk0A") {
+  // TẠO AREA MỚI
+  areaDocRef = await areasRef.add({
+    "address": addressController.text.trim(),
+    "owner_id": FirebaseFirestore.instance.doc("users/$userId"),
+    "createdAt": FieldValue.serverTimestamp(),
+    "sports": ["/sports/$selectedCategory"],
+  });
+
+  // CẬP NHẬT LẠI field với area_id MỚI
+  await fieldRef.update({
+    "area_id": areaDocRef, 
+  });
+
+  areaId = areaDocRef.path; // Cập nhật biến (nếu cần sau này)
+} else {
+  // CẬP NHẬT AREA CŨ
+  final areaDocId = areaId!.split('/').last;
+  areaDocRef = areasRef.doc(areaDocId);
+  await areaDocRef.set({
+    "address": addressController.text.trim(),
+    "owner_id": FirebaseFirestore.instance.doc("users/$userId"),
+    "updatedAt": FieldValue.serverTimestamp(),
+  }, SetOptions(merge: true));
+}
 
       // Lưu hoặc cập nhật giá trong "prices" với tham chiếu
       final priceData = {
@@ -577,4 +613,4 @@ class _ManageFieldScreenState extends State<ManageFieldScreen> {
     }
     return const Icon(Icons.camera_alt, size: 30);
   }
-}
+} 

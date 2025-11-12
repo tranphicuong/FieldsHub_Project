@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fieldshub/widget/field_booking_card.dart';
+import 'package:fieldshub/user/filter_dialog.dart';
 
 class UserHomeScreen extends StatefulWidget {
   const UserHomeScreen({Key? key}) : super(key: key);
@@ -130,7 +131,25 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   Icons.filter_alt,
                   color: Color.fromARGB(255, 148, 147, 147),
                 ),
-                onPressed: () => _showFilterSheet(context),
+                onPressed: () async {
+                  final result = await showFilterDialog(
+                    context: context,
+                    priceRange: _priceRange,
+                    timeRange: _timeRange,
+                    selectedDistricts: _selectedDistricts,
+                    selectedRating: _selectedRating,
+                  );
+
+                  if (result != null) {
+                    setState(() {
+                      _priceRange = result.priceRange;
+                      _timeRange = result.timeRange;
+                      _selectedDistricts = result.selectedDistricts;
+                      _selectedRating = result.selectedRating;
+                      _isFilterApplied = true;
+                    });
+                  }
+                },
               ),
             ],
           ),
@@ -230,7 +249,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           future: Future.wait(
             docs.map((doc) async {
               final data = doc.data() as Map<String, dynamic>;
-              final price = (data['price'] ?? 0).toDouble();
+              final double price = await Database.getFieldPrice(doc.id);
 
               final openTs = data['open_time'] as Timestamp?;
               final closeTs = data['close_time'] as Timestamp?;
@@ -239,7 +258,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
               final address = await Database.getFieldAddress(doc.id);
               final avgRating = await Database.getFieldAverageRating(doc.id);
-
+          
               return {
                 'doc': doc,
                 'data': data,
@@ -260,23 +279,27 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                 futureSnapshot.data ?? [];
 
             if (_isFilterApplied) {
-              enrichedData.removeWhere((item) {
+              enrichedData.retainWhere((item) {
+                final double price = item['price'];
+                final int open = item['open'];
+                final int close = item['close'];
+                final String district = item['address'] ?? '';
+                final double rating = item['rating'] ?? 0;
+
                 final matchPrice =
-                    item['price'] >= _priceRange.start &&
-                    item['price'] <= _priceRange.end;
+                    price >= _priceRange.start && price <= _priceRange.end;
+
                 final matchTime =
-                    _timeRange.start >= item['open'] &&
-                    _timeRange.end <= item['close'];
+                    !(close < _timeRange.start || open > _timeRange.end);
+
                 final matchDistrict =
                     _selectedDistricts.isEmpty ||
-                    _selectedDistricts.contains(item['address']);
-                final matchRating =
-                    _selectedRating == 0 || item['rating'] >= _selectedRating;
+                    _selectedDistricts.contains(district);
 
-                return !(matchPrice &&
-                    matchTime &&
-                    matchDistrict &&
-                    matchRating);
+                final matchRating =
+                    _selectedRating == 0 || rating >= _selectedRating;
+
+                return matchPrice && matchTime && matchDistrict && matchRating;
               });
             }
 
@@ -297,219 +320,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               },
             );
           },
-        );
-      },
-    );
-  }
-
-  void _showFilterSheet(BuildContext context) {
-    String _formatMoney(double value) {
-      final int v = value.toInt();
-      final s = v.toString().replaceAllMapped(
-        RegExp(r'\B(?=(\d{3})+(?!\d))'),
-        (m) => '.',
-      );
-      return "$s đ";
-    }
-
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Filter',
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (context, anim1, anim2) {
-        return Align(
-          alignment: Alignment.centerRight,
-          child: Material(
-            color: Colors.white,
-            child: SizedBox(
-              width: MediaQuery.of(context).size.width * 0.85,
-              height: double.infinity,
-              child: StatefulBuilder(
-                builder: (context, setModalState) {
-                  return Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                "Bộ lọc nâng cao",
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: () => Navigator.pop(context),
-                                icon: const Icon(Icons.close),
-                              ),
-                            ],
-                          ),
-                          const Divider(),
-
-                          Text(
-                            "Giá (${_formatMoney(_priceRange.start)} - ${_formatMoney(_priceRange.end)})",
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          RangeSlider(
-                            values: _priceRange,
-                            min: 0,
-                            max: 1000000,
-                            divisions: 20,
-                            activeColor: Colors.blue,
-                            inactiveColor: Colors.grey[300],
-                            labels: RangeLabels(
-                              _formatMoney(_priceRange.start),
-                              _formatMoney(_priceRange.end),
-                            ),
-                            onChanged: (val) =>
-                                setModalState(() => _priceRange = val),
-                          ),
-
-                          const SizedBox(height: 20),
-
-                          Text(
-                            "Giờ hoạt động (${_timeRange.start.toInt()}h - ${_timeRange.end.toInt()}h)",
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          RangeSlider(
-                            values: _timeRange,
-                            min: 0,
-                            max: 24,
-                            divisions: 24,
-                            activeColor: Colors.green,
-                            inactiveColor: Colors.grey[300],
-                            labels: RangeLabels(
-                              "${_timeRange.start.toInt()}h",
-                              "${_timeRange.end.toInt()}h",
-                            ),
-                            onChanged: (val) =>
-                                setModalState(() => _timeRange = val),
-                          ),
-
-                          const SizedBox(height: 20),
-
-                          const Text(
-                            "Khu vực",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: [
-                              for (final d in [
-                                'Thủ Đức',
-                                'Gò Vấp',
-                                'Bình Thạnh',
-                                'Quận 1',
-                                'Quận 3',
-                                'Quận 10',
-                              ])
-                                FilterChip(
-                                  label: Text(d),
-                                  selected: _selectedDistricts.contains(d),
-                                  onSelected: (selected) {
-                                    setModalState(() {
-                                      if (selected)
-                                        _selectedDistricts.add(d);
-                                      else
-                                        _selectedDistricts.remove(d);
-                                    });
-                                  },
-                                ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 20),
-
-                          const Text(
-                            "Đánh giá",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          Row(
-                            children: List.generate(5, (index) {
-                              final star = index + 1;
-                              return IconButton(
-                                onPressed: () => setModalState(
-                                  () => _selectedRating =
-                                      _selectedRating == star ? 0 : star,
-                                ),
-                                icon: Icon(
-                                  Icons.star,
-                                  color: _selectedRating >= star
-                                      ? Colors.amber
-                                      : Colors.grey,
-                                ),
-                              );
-                            }),
-                          ),
-
-                          const SizedBox(height: 20),
-
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              TextButton(
-                                onPressed: () {
-                                  setModalState(() {
-                                    _priceRange = const RangeValues(0, 1000000);
-                                    _timeRange = const RangeValues(6, 22);
-                                    _selectedDistricts.clear();
-                                    _selectedRating = 0;
-                                  });
-                                  setState(() => _isFilterApplied = false);
-                                  Navigator.pop(context);
-                                },
-                                child: const Text("Thiết lập lại"),
-                              ),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                ),
-                                onPressed: () {
-                                  setState(() => _isFilterApplied = true);
-                                  Navigator.pop(context);
-                                },
-                                child: const Text(
-                                  "Áp dụng",
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        );
-      },
-      transitionBuilder: (context, anim1, anim2, child) {
-        return SlideTransition(
-          position: Tween(
-            begin: const Offset(1, 0),
-            end: Offset.zero,
-          ).animate(anim1),
-          child: child,
         );
       },
     );

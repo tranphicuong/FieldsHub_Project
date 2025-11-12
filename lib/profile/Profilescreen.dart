@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fieldshub/services/cloudinary_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -16,6 +17,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool isEditing = false;
   String gender = "Nam";
   File? _imageFile;
+  String userAvatar = '';
 
   final currentUser = FirebaseAuth.instance.currentUser;
   final TextEditingController nameController = TextEditingController();
@@ -29,14 +31,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadUserData();
   }
 
-  
   Future<void> _loadUserData() async {
     try {
-      if (currentUser == null) return;
+      final currentUser = FirebaseAuth.instance.currentUser;
+
+      //  Kiểm tra xem người dùng đã đăng nhập chưa
+      if (currentUser == null) {
+        debugPrint('⚠️ Người dùng chưa đăng nhập!');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Vui lòng đăng nhập để xem hồ sơ.')),
+          );
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+          );
+        }
+        return;
+      }
 
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(currentUser!.uid)
+          .doc(currentUser.uid)
           .get();
 
       if (!mounted || !userDoc.exists) return;
@@ -47,6 +63,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       phoneController.text = data['phone'] ?? '';
       addressController.text = data['address'] ?? '';
       gender = data['gender'] ?? 'Nam';
+      userAvatar = data['avatar'] ?? '';
 
       if (data['dob'] != null) {
         if (data['dob'] is Timestamp) {
@@ -63,27 +80,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (mounted) setState(() {});
     } catch (e, stack) {
-      debugPrint('🔥 Lỗi khi tải dữ liệu người dùng: $e');
+      debugPrint(' Lỗi khi tải dữ liệu người dùng: $e');
       debugPrintStack(stackTrace: stack);
     }
   }
 
-  // 🔹 Chọn ảnh có kiểm tra lỗi & quyền
+  //  Chọn ảnh có kiểm tra lỗi & quyền
   Future<void> _pickImage(ImageSource source) async {
-    try {
-      final pickedFile = await ImagePicker().pickImage(source: source);
-      if (!mounted) return;
-      if (pickedFile != null) {
-        setState(() {
-          _imageFile = File(pickedFile.path);
-        });
-      }
-    } catch (e) {
-      debugPrint('⚠️ Lỗi chọn ảnh: $e');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không thể mở máy ảnh hoặc thư viện.')),
+    final pickedFile = await ImagePicker().pickImage(source: source);
+    if (!mounted || pickedFile == null) return;
+
+    setState(() {
+      _imageFile = File(pickedFile.path);
+    });
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId != null) {
+      await CloudinaryService.uploadUserAvatar(
+        imageFile: _imageFile!,
+        userId: userId,
+        context: context,
       );
+      await _loadUserData();
     }
   }
 
@@ -120,7 +137,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // 🔹 Lưu thông tin người dùng
+  //  Lưu thông tin người dùng
   Future<void> _saveUserData() async {
     if (currentUser == null) return;
     try {
@@ -169,7 +186,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // 🔹 Widget nhập liệu
+  //  Widget nhập liệu
   Widget _buildTextField(
     String label,
     TextEditingController controller, {
@@ -209,6 +226,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    if (currentUser == null) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock_outline, size: 80, color: Colors.grey),
+              const SizedBox(height: 10),
+              const Text('Bạn chưa đăng nhập'),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  );
+                },
+                child: const Text('Đăng nhập ngay'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: Colors.blue[50],
       appBar: AppBar(
@@ -232,8 +276,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 backgroundColor: Colors.blue[200],
                 backgroundImage: _imageFile != null
                     ? FileImage(_imageFile!)
-                    : null,
-                child: _imageFile == null
+                    : (userAvatar.isNotEmpty
+                          ? NetworkImage(
+                              '$userAvatar?w_200,h_200,c_fill,f_auto',
+                            )
+                          : null),
+                child: _imageFile == null && userAvatar.isEmpty
                     ? const Icon(Icons.person, size: 70, color: Colors.white)
                     : null,
               ),

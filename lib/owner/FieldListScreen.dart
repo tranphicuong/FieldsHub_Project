@@ -3,8 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 class DanhSachSanScreen extends StatefulWidget {
-  const DanhSachSanScreen({super.key});
-
+  const DanhSachSanScreen({super.key, this.initialFilter});
+  final String? initialFilter;
   @override
   State<DanhSachSanScreen> createState() => _DanhSachSanScreenState();
 }
@@ -77,9 +77,16 @@ class _DanhSachSanScreenState extends State<DanhSachSanScreen> {
                 return;
               }
 
+              final user = FirebaseAuth.instance.currentUser;
+              if (user == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("❌ Lỗi: chưa đăng nhập.")),
+                );
+                return;
+              }
               final newData = {
                 'name': tenController.text.trim(),
-                'ownerId': FirebaseAuth.instance.currentUser?.uid,
+                'ownerId': user.uid,
                 'diaChi': diaChiController.text.trim(),
                 'price': giaController.text.trim(),
                 'deposit_percent': cocController.text.trim().isEmpty
@@ -198,6 +205,35 @@ class _DanhSachSanScreenState extends State<DanhSachSanScreen> {
     }
   }
 
+  Future<String> _fetchAddressForField(Map<String, dynamic> fieldData, String fieldId) async {
+  String address = (fieldData['diaChi'] as String?) ?? '';
+  if (address.isEmpty || address == '—') {
+    try {
+      // Lấy tham chiếu area_id từ document field
+      dynamic areaRef = fieldData['area_id'];
+      DocumentSnapshot? areaDoc;
+
+      if (areaRef is DocumentReference) {
+        areaDoc = await areaRef.get();
+      } else if (areaRef is String) {
+        areaDoc = await FirebaseFirestore.instance
+            .collection('areas')
+            .doc(areaRef)
+            .get();
+      }
+
+      // Nếu tìm được document area thì lấy địa chỉ
+      address = (areaDoc?.data() as Map<String, dynamic>?)?['address'] as String? ??
+          'Không có địa chỉ';
+    } catch (e) {
+      debugPrint('Lỗi fetch address cho field $fieldId: $e');
+      address = 'Không xác định';
+    }
+  }
+  return address;
+}
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -239,7 +275,7 @@ class _DanhSachSanScreenState extends State<DanhSachSanScreen> {
               final fieldId = 'fields/${doc.id}';
 
               final ten = data['name'] ?? 'Không tên';
-              final diaChi = data['diaChi'] ?? 'Chưa có địa chỉ';
+              
               final anh = data['image'];
               final coc = data['deposit_percent']?.toString() ?? '0';
               final giaTuData = data['price']?.toString() ?? '0';
@@ -270,8 +306,29 @@ class _DanhSachSanScreenState extends State<DanhSachSanScreen> {
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("🏠 Địa chỉ: $diaChi",
-                          style: const TextStyle(fontSize: 13)),
+                     FutureBuilder<String>(
+  future: _fetchAddressForField(data, doc.id),
+  builder: (context, snapshot) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const Text(
+        "🏠 Địa chỉ: Đang tải...",
+        style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic),
+      );
+    }
+    if (snapshot.hasError) {
+      return const Text(
+        "🏠 Địa chỉ: Lỗi khi tải",
+        style: TextStyle(fontSize: 13, color: Colors.red),
+      );
+    }
+    final address = snapshot.data ?? 'Không xác định';
+    return Text(
+      "🏠 Địa chỉ: $address",
+      style: const TextStyle(fontSize: 13),
+    );
+  },
+),
+
                       FutureBuilder<int?>(
                         future: _fetchPrice(fieldId),
                         builder: (context, priceSnapshot) {

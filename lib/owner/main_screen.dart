@@ -3,9 +3,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fieldshub/owner/DashboardScreen.dart';
+import 'package:fieldshub/profile/Profilescreen.dart';
 import 'package:fieldshub/owner/OrderScreen.dart';
 import 'package:fieldshub/notification/NotificationsScreen.dart';
-import 'package:fieldshub/profile/Profilescreen.dart';
+
 import 'package:fieldshub/owner/SettingScreen.dart';
 import 'package:fieldshub/owner/bottom_nav_bar.dart';
 
@@ -50,27 +51,20 @@ class _MainScreenState extends State<MainScreen> {
     FirebaseFirestore.instance
         .collection('notifications')
         //.where('user_id', isEqualTo: userId) // ✅ Nếu user_id = UID
-        .where(
-          'user_id',
-          isEqualTo: '/users/$userId',
-        ) // ✅ Nếu user_id = "/users/<UID>"
+         .where('user_id', isEqualTo: '/users/$userId') // ✅ Nếu user_id = "/users/<UID>"
         .where('is_read', isEqualTo: false)
         .snapshots()
         .listen(
-          (snapshot) {
-            print(
-              "📢 Unread notifications: ${snapshot.docs.length} | userId: $userId | ${DateFormat('HH:mm:ss').format(DateTime.now())}",
-            );
-            setState(() {
-              _unreadNotificationsCount = snapshot.docs.length;
-            });
-          },
-          onError: (error) {
-            print(
-              "❌ Error while listening to notifications for $userId: $error",
-            );
-          },
-        );
+      (snapshot) {
+        print("📢 Unread notifications: ${snapshot.docs.length} | userId: $userId | ${DateFormat('HH:mm:ss').format(DateTime.now())}");
+        setState(() {
+          _unreadNotificationsCount = snapshot.docs.length;
+        });
+      },
+      onError: (error) {
+        print("❌ Error while listening to notifications for $userId: $error");
+      },
+    );
   }
 
   @override

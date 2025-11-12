@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fieldshub/owner/FieldListScreen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -64,34 +65,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Stream<Map<String, int>> _getFieldCounts() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      print("Error: No authenticated user found. UID is null.");
-      return Stream.value({'Bóng Đá': 0, 'Bida': 0});
-    }
-    final userId = user.uid;
-    print("Querying fields for ownerId: $userId");
-    return FirebaseFirestore.instance
-        .collection('fields')
-        .where('ownerId', isEqualTo: userId)
-        .snapshots()
-        .map((snapshot) {
-      int footballCount = 0;
-      int billiardCount = 0;
-      print("Found ${snapshot.docs.length} fields for owner $userId");
-      for (var doc in snapshot.docs) {
-        final data = doc.data();
-        final fieldId = doc.id;
-        final sport = data['sport']?.toString().toLowerCase() ?? 'unknown';
-        final ownerId = data['ownerId']?.toString() ?? 'unknown';
-        print("Field $fieldId - sport: $sport, ownerId: $ownerId");
-        if (sport.contains('bongda') || sport.contains('bóng đá') || sport.contains('soccer') || sport.contains('football')) footballCount++;
-        if (sport.contains('bida') || sport.contains('billiard') || sport.contains('pool')) billiardCount++;
+  final now = DateTime.now();
+  final startOfDay = DateTime(now.year, now.month, now.day);
+  final endOfDay = startOfDay.add(const Duration(days: 1));
+
+  return FirebaseFirestore.instance
+      .collection('fields')
+      .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+      .where('createdAt', isLessThan: Timestamp.fromDate(endOfDay))
+      .snapshots()
+      .map((snapshot) {
+    int footballCount = 0;
+    int billiardCount = 0;
+
+    for (var doc in snapshot.docs) {
+      final data = doc.data();
+      final sport = (data['sport'] ?? '').toString().toLowerCase();
+
+      if (sport.contains('bong') || sport.contains('football') || sport.contains('soccer')) {
+        footballCount++;
+      } else if (sport.contains('bida') || sport.contains('billiard') || sport.contains('pool')) {
+        billiardCount++;
       }
-      print("Final counts - Football: $footballCount, Billiard: $billiardCount");
-      return {'Bóng Đá': footballCount, 'Bida': billiardCount};
-    });
-  }
+    }
+
+    return {'Bóng Đá': footballCount, 'Bida': billiardCount};
+  });
+}
+
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -306,7 +309,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const ManageFieldScreen(),
+                        builder: (_) =>  ManageFieldScreen(),
                       ),
                     );
                   },
@@ -318,7 +321,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const DanhGiaCuaToiScreen(),
+                        builder: (_) => DanhGiaCuaToiScreen(
+     ownerUserId: FirebaseAuth.instance.currentUser!.uid, // Chỉ truyền ID
+    ),
                       ),
                     );
                   },
@@ -326,7 +331,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
             const SizedBox(height: 20),
-            StreamBuilder<Map<String, int>>(
+                        StreamBuilder<Map<String, int>>(
               stream: _getFieldCounts(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -335,9 +340,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 if (!snapshot.hasData) {
                   return const Center(child: Text("Không có dữ liệu sân hoặc lỗi kết nối"));
                 }
+
                 final fieldCounts = snapshot.data!;
                 final footballCount = fieldCounts['Bóng Đá'] ?? 0;
                 final billiardCount = fieldCounts['Bida'] ?? 0;
+              
                 return Column(
                   children: [
                     _buildFieldItem(
@@ -346,6 +353,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       location: "702, Nguyễn Giáp, Hiệp Phú, Thủ Đức",
                       details: "5:00 - 23:00",
                       sub: "$footballCount Sân",
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const DanhSachSanScreen(
+                              initialFilter: 'Bóng Đá', 
+                            ),
+                          ),
+                        );
+                      },
                     ),
                     _buildFieldItem(
                       icon: Icons.sports_bar,
@@ -353,11 +370,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       location: "702, Nguyễn Giáp, Hiệp Phú, Thủ Đức",
                       details: "24/24",
                       sub: "$billiardCount Bàn",
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const DanhSachSanScreen(
+                              initialFilter: 'Bida', 
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 );
               },
             ),
+
             const SizedBox(height: 15),
             const Text(
               "Dashboard",
@@ -414,8 +442,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required String location,
     required String details,
     required String sub,
+     required VoidCallback onTap, 
   }) {
-    return Container(
+   return InkWell(
+    onTap: onTap, 
+    borderRadius: BorderRadius.circular(12),
+    child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -466,7 +498,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-    );
+    ),
+   );
   }
 }
 

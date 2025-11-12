@@ -10,8 +10,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 class PaymentPage extends StatefulWidget {
   final String? bookingId;
-  final double amount;          // TIỀN CẦN THANH TOÁN (20% hoặc 100%)
-  final double totalAmount;     // TỔNG TIỀN
+  final double amount;
+  final double totalAmount;
   final String paymentMethod;
   final String? fieldId;
   final DateTime? startTime;
@@ -67,9 +67,13 @@ class _PaymentPageState extends State<PaymentPage> {
     }
 
     paymentType = widget.paymentMethod;
-    txCode = "#${DateTime.now().millisecondsSinceEpoch.toString().substring(0, 6)}";
-    _loadBookingData();
-    _startCountdown();
+    txCode =
+        "#${DateTime.now().millisecondsSinceEpoch.toString().substring(0, 6)}";
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadBookingData();
+      _startCountdown();
+    });
   }
 
   @override
@@ -83,7 +87,9 @@ class _PaymentPageState extends State<PaymentPage> {
     if (idToLoad != null) {
       final data = await Database.getBooking(idToLoad);
       if (data != null && mounted) {
-        final fetchedAddress = await Database.getFieldAddress(widget.fieldId?? '');
+        final fetchedAddress = await Database.getFieldAddress(
+          widget.fieldId ?? '',
+        );
         setState(() {
           fieldName = data['field_name'] ?? widget.fieldName ?? 'Không tên';
           address = fetchedAddress;
@@ -139,101 +145,104 @@ class _PaymentPageState extends State<PaymentPage> {
   }
 
   void _onConfirmPayment() async {
-  setState(() => _state = PaymentState.waitingConfirmation);
+    setState(() => _state = PaymentState.waitingConfirmation);
 
-  showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => const Center(child: CircularProgressIndicator()),
-  );
-
-  String? errorMsg;
-  final bookingCode = _generateBookingCode();
-
-  try {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Vui lòng đăng nhập');
-
-    final fetchedAddress =
-        widget.address ?? await Database.getFieldAddress(widget.fieldId ?? '' );
-
-    final qrData = "$fieldName|$timeRange|$txCode";
-    final qrUrl =
-        "https://api.qrserver.com/v1/create-qr-code/?data=${Uri.encodeComponent(qrData)}&size=300x300";
-
-    final bookingId = await Database.createBooking(
-      userId: user.uid,
-      fieldId: widget.fieldId,
-      fieldName: widget.fieldName ?? '',
-      address: fetchedAddress,
-      startTime: widget.startTime!,
-      endTime: widget.endTime!,
-      price: widget.amount,
-      paymentMethod: widget.paymentMethod,
-      bookingCode: bookingCode,
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
     );
 
-    _localBookingId = bookingId;
+    String? errorMsg;
+    final bookingCode = _generateBookingCode();
 
-    final paymentId = await Database.createPayment(
-      bookingId: bookingId,
-      amount: widget.amount,
-      qrCodeUrl: qrUrl,
-      statusKey: 'pending',
-    );
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('Vui lòng đăng nhập');
 
-    _paymentId = paymentId;
-    if (mounted) setState(() => _bookingCode = bookingCode);
+      final fetchedAddress =
+          widget.address ??
+          await Database.getFieldAddress(widget.fieldId ?? '');
 
-    await Database.sendNotification(
-      userId: user.uid,
-      title: 'Yêu cầu thanh toán đã gửi',
-      subtitle: 'Vui lòng thanh toán qua mã QR',
-      fieldName: widget.fieldName,
-      address: fetchedAddress,
-      timeSlot: timeRange,
-      paymentMethod: widget.paymentMethod,
-      bookingCode: bookingCode,
-    );
+      final qrData = "$fieldName|$timeRange|$txCode";
+      final qrUrl =
+          "https://api.qrserver.com/v1/create-qr-code/?data=${Uri.encodeComponent(qrData)}&size=300x300";
 
-    final ownerId = await Database.getFieldOwnerId(widget.fieldId!);
-    if (ownerId != null) {
+      final bookingId = await Database.createBooking(
+        userId: user.uid,
+        fieldId: widget.fieldId,
+        fieldName: widget.fieldName ?? '',
+        address: fetchedAddress,
+        startTime: widget.startTime!,
+        endTime: widget.endTime!,
+        totalAmount: widget.totalAmount, 
+        depositAmount: widget.amount,
+        paymentMethod: widget.paymentMethod,
+        bookingCode: bookingCode,
+      );
+
+      _localBookingId = bookingId;
+
+      final paymentId = await Database.createPayment(
+        bookingId: bookingId,
+        amount: widget.amount,
+        qrCodeUrl: qrUrl,
+        statusKey: 'pending',
+      );
+
+      _paymentId = paymentId;
+      if (mounted) setState(() => _bookingCode = bookingCode);
+
       await Database.sendNotification(
-        userId: ownerId,
-        title: 'Yêu cầu thanh toán mới',
-        subtitle: 'Khách đã tạo mã QR thanh toán',
+        userId: user.uid,
+        title: 'Yêu cầu thanh toán đã gửi',
+        subtitle: 'Vui lòng thanh toán qua mã QR',
         fieldName: widget.fieldName,
         address: fetchedAddress,
         timeSlot: timeRange,
         paymentMethod: widget.paymentMethod,
+        bookingCode: bookingCode,
       );
+
+      final ownerId = await Database.getFieldOwnerId(widget.fieldId!);
+      if (ownerId != null) {
+        await Database.sendNotification(
+          userId: ownerId,
+          title: 'Yêu cầu thanh toán mới',
+          subtitle: 'Khách đã tạo mã QR thanh toán',
+          fieldName: widget.fieldName,
+          address: fetchedAddress,
+          timeSlot: timeRange,
+          paymentMethod: widget.paymentMethod,
+        );
+      }
+
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      errorMsg = e.toString();
     }
 
-    if (mounted) {
+    if (mounted && errorMsg != null) {
       Navigator.pop(context);
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Lỗi'),
+          content: Text(errorMsg ?? 'Đã có lỗi xảy ra. Vui lòng thử lại.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Đóng'),
+            ),
+          ],
+        ),
+      );
+      setState(() => _state = PaymentState.showingQR);
     }
-  } catch (e) {
-    errorMsg = e.toString();
   }
 
-  if (mounted && errorMsg != null) {
-    Navigator.pop(context); 
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Lỗi'),
-        content: Text(errorMsg ?? 'Đã có lỗi xảy ra. Vui lòng thử lại.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Đóng'),
-          ),
-        ],
-      ),
-    );
-    setState(() => _state = PaymentState.showingQR);
-  }
-}
   Future<void> _updateBookingStatus(String statusKey) async {
     final id = widget.bookingId ?? _localBookingId;
     if (id == null) return;
@@ -275,9 +284,9 @@ class _PaymentPageState extends State<PaymentPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
       }
     }
   }
@@ -328,8 +337,9 @@ class _PaymentPageState extends State<PaymentPage> {
 
   Widget _buildPaymentCard() {
     final numberFormat = NumberFormat('#,###', 'vi_VN');
-    final depositAmount = paymentType == "Cọc" ? widget.amount.toInt() : 0;
-    final remainingAmount = widget.totalAmount.toInt() - depositAmount;
+    final bool isDeposit = paymentType == "Cọc";
+    final int paidNow = widget.amount.toInt();
+    final int remaining = widget.totalAmount.toInt() - paidNow;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -344,7 +354,10 @@ class _PaymentPageState extends State<PaymentPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(fieldName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(
+            fieldName,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 4),
           Text(address, style: const TextStyle(color: Colors.black54)),
           const SizedBox(height: 6),
@@ -352,18 +365,27 @@ class _PaymentPageState extends State<PaymentPage> {
           const SizedBox(height: 6),
           Text(
             "Tổng tiền: ${numberFormat.format(widget.totalAmount.toInt())} VNĐ",
-            style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.red,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 8),
           Row(children: [const Text("Hình thức: "), Text(paymentType)]),
 
-          if (paymentType == "Cọc") ...[
+          if (isDeposit) ...[
             const SizedBox(height: 4),
-            Text("Đã cọc: ${numberFormat.format(depositAmount)} VNĐ", style: const TextStyle(color: Colors.blue)),
-            Text("Còn lại: ${numberFormat.format(remainingAmount)} VNĐ", style: const TextStyle(color: Colors.orange)),
+            Text(
+              "Đã cọc: ${numberFormat.format(paidNow)} VNĐ",
+              style: const TextStyle(color: Colors.blue),
+            ),
+            Text(
+              "Còn lại: ${numberFormat.format(remaining)} VNĐ",
+              style: const TextStyle(color: Colors.orange),
+            ),
           ],
 
-          if (paymentType == "Trả hết") ...[
+          if (!isDeposit) ...[
             const SizedBox(height: 6),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -372,7 +394,13 @@ class _PaymentPageState extends State<PaymentPage> {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.green),
               ),
-              child: const Text("Thanh toán toàn bộ", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+              child: const Text(
+                "Thanh toán toàn bộ",
+                style: TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
 
@@ -398,9 +426,18 @@ class _PaymentPageState extends State<PaymentPage> {
           Center(
             child: Column(
               children: [
-                Text(_formatDuration(_remaining), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text(
+                  _formatDuration(_remaining),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text("Trạng thái giao dịch: Đang chờ xác nhận", style: TextStyle(color: Colors.grey.shade700, fontSize: 14)),
+                Text(
+                  "Trạng thái giao dịch: Đang chờ xác nhận",
+                  style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+                ),
               ],
             ),
           ),
@@ -418,7 +455,9 @@ class _PaymentPageState extends State<PaymentPage> {
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
               onPressed: _onConfirmPayment,
@@ -431,7 +470,9 @@ class _PaymentPageState extends State<PaymentPage> {
             child: OutlinedButton(
               style: OutlinedButton.styleFrom(
                 side: BorderSide(color: Colors.grey.shade300),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
               onPressed: _onCancelPressed,
@@ -451,18 +492,36 @@ class _PaymentPageState extends State<PaymentPage> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3))],
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 6,
+              offset: Offset(0, 3),
+            ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.access_time_outlined, size: 70, color: Colors.blue),
+            const Icon(
+              Icons.access_time_outlined,
+              size: 70,
+              color: Colors.blue,
+            ),
             const SizedBox(height: 10),
-            const Text("Đang chờ chủ sân xác nhận", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              "Đang chờ chủ sân xác nhận",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
-            Text("Số tiền: ${NumberFormat('#,###', 'vi_VN').format(widget.totalAmount.toInt())} VNĐ"),
+            Text(
+              "Số tiền: ${NumberFormat('#,###', 'vi_VN').format(widget.totalAmount.toInt())} VNĐ",
+            ),
             const SizedBox(height: 4),
-            Text("Mã đơn: ${_bookingCode.isNotEmpty ? _bookingCode : txCode}", style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              "Mã đơn: ${_bookingCode.isNotEmpty ? _bookingCode : txCode}",
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 16),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
@@ -481,7 +540,8 @@ class _PaymentPageState extends State<PaymentPage> {
             ),
             const SizedBox(height: 10),
             OutlinedButton(
-              onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+              onPressed: () =>
+                  Navigator.of(context).popUntil((route) => route.isFirst),
               child: const Text("Quay lại trang chủ"),
             ),
           ],
@@ -498,14 +558,23 @@ class _PaymentPageState extends State<PaymentPage> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3))],
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 6,
+              offset: Offset(0, 3),
+            ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.close, size: 70, color: Colors.red),
             const SizedBox(height: 10),
-            const Text("Thanh toán đã hủy", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              "Thanh toán đã hủy",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
             const Text("Giao dịch đã bị hủy hoặc hết thời gian."),
             const SizedBox(height: 12),
@@ -530,10 +599,13 @@ class _PaymentPageState extends State<PaymentPage> {
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
             child: _state == PaymentState.showingQR
-                ? Column(key: const ValueKey('qr'), children: [_buildPaymentCard(), _buildBottomButtonsQR()])
+                ? Column(
+                    key: const ValueKey('qr'),
+                    children: [_buildPaymentCard(), _buildBottomButtonsQR()],
+                  )
                 : _state == PaymentState.waitingConfirmation
-                    ? _buildWaitingScreen()
-                    : _buildCancelledScreen(),
+                ? _buildWaitingScreen()
+                : _buildCancelledScreen(),
           ),
         ),
       ),

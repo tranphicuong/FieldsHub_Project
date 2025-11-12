@@ -204,9 +204,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
     }
 
     final status = booking['status'] as String? ?? 'Không xác định';
-    final priceValue = (booking['price'] is num)
-        ? (booking['price'] as num).toInt()
-        : int.tryParse(booking['price']?.toString() ?? '') ?? 0;
+
     final fieldNameText =
         booking['field_name'] as String? ??
         booking['fieldName'] as String? ??
@@ -216,9 +214,18 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
         booking['bookingCode'] as String? ??
         bookingId;
 
+    final totalAmount = (booking['total_amount'] as num?)?.toDouble() ?? 0.0;
+    final depositAmount =
+        (booking['deposit_amount'] as num?)?.toDouble() ?? 0.0;
+    final paymentMethod = booking['payment_method'] as String? ?? 'Cọc';
+
+    final remainingAmount = paymentMethod == "Cọc"
+        ? (totalAmount - depositAmount).toInt()
+        : 0;
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-      elevation: 4, 
+      elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(15),
@@ -269,7 +276,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
               ),
               const SizedBox(height: 2),
               Text(
-                "${NumberFormat('#,###', 'vi_VN').format(priceValue)} VNĐ",
+                "${NumberFormat('#,###', 'vi_VN').format(depositAmount)} VNĐ",
                 style: const TextStyle(
                   color: Colors.red,
                   fontWeight: FontWeight.w500,
@@ -288,9 +295,18 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
                 ),
                 Text("Địa chỉ: $address", style: const TextStyle(fontSize: 13)),
                 Text(
-                  "Số tiền còn lại: ${NumberFormat('#,###', 'vi_VN').format((priceValue * 0.8).toInt())} VNĐ",
-                  style: const TextStyle(fontSize: 13),
+                  paymentMethod == "Cọc"
+                      ? "Số tiền còn lại: ${NumberFormat('#,###', 'vi_VN').format(remainingAmount)} VNĐ"
+                      : "Đã thanh toán toàn bộ",
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: paymentMethod == "Cọc"
+                        ? Colors.orange
+                        : Colors.green,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
+
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -398,10 +414,10 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
                           );
                           if (confirm == true && mounted) {
                             try {
-                              await FirebaseFirestore.instance
-                                  .collection('bookings')
-                                  .doc(bookingId)
-                                  .update({'status': 'Đã hủy'});
+                              await Database.updateBookingStatus(
+                                bookingId: bookingId,
+                                 statusKey: 'cancelled');
+                             
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(

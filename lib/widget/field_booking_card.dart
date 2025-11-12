@@ -151,9 +151,10 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
     } catch (e) {}
 
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 6,
+      margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 8,
+      clipBehavior: Clip.hardEdge,
       child: ExpansionTile(
         title: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -259,51 +260,55 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      OutlinedButton.icon(
-                        onPressed: () => showDialog(
-                          context: context,
-                          builder: (_) => AlertDialog(
-                            title: const Text("Chat"),
-                            content: const Text(
-                              "Tính năng đang được phát triển.",
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text("Đóng"),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => showDialog(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: const Text("Chat"),
+                              content: const Text(
+                                "Tính năng đang được phát triển.",
                               ),
-                            ],
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text("Đóng"),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        icon: const Icon(Icons.chat_bubble_outline, size: 1),
-                        label: const Text("Chat"),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.blue,
-                          side: const BorderSide(color: Colors.blue),
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        
+                          label: const Text("Chat"),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.blue,
+                            side: const BorderSide(color: Colors.blue),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ReviewScreen(
-                                fieldId: widget.fieldId,
-                                bookingId: '',
-                                fieldName: name,
-                                fieldImage: data['image'] ?? '',
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ReviewScreen(
+                                  fieldId: widget.fieldId,
+                                  bookingId: '',
+                                  fieldName: name,
+                                  fieldImage: data['image'] ?? '',
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.star_outline, size: 16),
-                        label: const Text("Xem đánh giá"),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.orange,
-                          side: const BorderSide(color: Colors.orange),
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                            );
+                          },
+                          
+                          label: const Text("Xem đánh giá"),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.orange,
+                            side: const BorderSide(color: Colors.orange),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
                         ),
                       ),
                     ],
@@ -380,9 +385,20 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                                       ScaffoldMessenger.of(
                                         context,
                                       ).showSnackBar(
-                                        const SnackBar(
+                                        SnackBar(
                                           content: Text(
                                             "Giờ kết thúc phải sau giờ bắt đầu",
+                                          ),
+                                          behavior: SnackBarBehavior.floating,
+                                          margin: const EdgeInsets.only(
+                                            bottom: 50,
+                                            left: 20,
+                                            right: 20,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
                                           ),
                                         ),
                                       );
@@ -398,9 +414,19 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                                         ScaffoldMessenger.of(
                                           context,
                                         ).showSnackBar(
-                                          const SnackBar(
+                                          SnackBar(
                                             content: Text(
                                               "Khung giờ này đã được đặt!",
+                                            ),
+                                            behavior: SnackBarBehavior.floating,
+                                            margin: const EdgeInsets.only(
+                                              bottom: 50,
+                                              left: 20,
+                                              right: 20,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
                                             ),
                                           ),
                                         );
@@ -451,11 +477,6 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                               ),
                               if (isBooked) ...[
                                 const SizedBox(width: 4),
-                                Icon(
-                                  Icons.lock,
-                                  size: 14,
-                                  color: Colors.grey[600],
-                                ),
                               ],
                             ],
                           ),
@@ -534,8 +555,17 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                           selectedTime == null ||
                           selectedTime!.endsWith('?')) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
+                          SnackBar(
                             content: Text("Vui lòng chọn đầy đủ khung giờ"),
+                            behavior: SnackBarBehavior.floating,
+                            margin: const EdgeInsets.only(
+                              bottom: 50,
+                              left: 20,
+                              right: 20,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                         );
                         return;
@@ -550,9 +580,18 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                       for (int i = startIdx; i < endIdx; i++) {
                         if (bookedSlots.contains(timeSlots[i])) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
+                            SnackBar(
                               content: Text(
                                 "Khung giờ đã bị đặt! Vui lòng chọn lại.",
+                              ),
+                              behavior: SnackBarBehavior.floating,
+                              margin: const EdgeInsets.only(
+                                bottom: 50,
+                                left: 20,
+                                right: 20,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
                               ),
                             ),
                           );
@@ -578,8 +617,17 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                       final pricePerHour = await _getFieldPrice();
                       if (pricePerHour <= 0) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
+                          SnackBar(
                             content: Text("Không lấy được giá sân"),
+                            behavior: SnackBarBehavior.floating,
+                            margin: const EdgeInsets.only(
+                              bottom: 50,
+                              left: 20,
+                              right: 20,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                         );
                         return;
@@ -616,8 +664,6 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                         }
                       }
 
-                      _resetSelection();
-
                       if (!mounted) return;
                       Navigator.push(
                         context,
@@ -633,7 +679,9 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                             address: address,
                           ),
                         ),
-                      );
+                      ).then((_) {
+                        _resetSelection();
+                      });
                     },
                     child: const Text("Xác nhận đặt sân"),
                   ),

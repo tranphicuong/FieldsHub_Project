@@ -133,12 +133,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     final shortText = '$subtitle - $fieldName';
                     final fullText =
                         '''
-$subtitle
-$fieldName
-Địa chỉ: $address
-Khung giờ: $timeSlot
-Hình thức thanh toán: $paymentMethod
-'''
+                    $subtitle
+                    $fieldName
+                    Địa chỉ: $address
+                    Khung giờ: $timeSlot
+                    Hình thức thanh toán: $paymentMethod
+                    '''
                             .trim();
 
                     return _buildNotificationCard(

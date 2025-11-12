@@ -49,7 +49,14 @@ class _ReviewScreenState extends State<ReviewScreen> {
   void _sendReview() async {
     if (_controller.text.trim().isEmpty || _userRating == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Vui lòng chọn sao và viết đánh giá")),
+        SnackBar(
+          content: Text("Vui lòng chọn sao và viết đánh giá"),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
       );
       return;
     }
@@ -66,7 +73,14 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Cảm ơn bạn đã đánh giá!")),
+          SnackBar(
+            content: Text("Cảm ơn bạn đã đánh giá!"),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
         );
         Navigator.pop(context);
       }

@@ -173,7 +173,8 @@ class Database {
     required String address,
     required DateTime startTime,
     required DateTime endTime,
-    required double price,
+    required double totalAmount,
+    required double depositAmount,
     required String paymentMethod,
     required String bookingCode,
   }) async {
@@ -191,7 +192,7 @@ class Database {
         "approved": {'id': '5', 'name': 'Đã xác nhận'},
         "completed": {'id': '6', 'name': 'Hoàn thành'},
         "using": {'id': '7', 'name': 'Đang sử dụng'},
-        "rejected": {'id': '8', 'name': 'Bị từ chối'}, // thêm nếu cần
+        "rejected": {'id': '8', 'name': 'Bị từ chối'},
       };
 
       final statusData = statusMap['pending']!;
@@ -203,7 +204,8 @@ class Database {
         'address': address,
         'start_time': Timestamp.fromDate(startTime),
         'end_time': Timestamp.fromDate(endTime),
-        'price': price,
+        'total_amount': totalAmount,
+        'deposit_amount': depositAmount,
         'payment_method': paymentMethod,
         'booking_code': bookingCode,
         'status_id': _firestore.collection('status').doc(statusData['id']),
@@ -538,7 +540,9 @@ class Database {
       final data = doc.data()!;
       final imageUrl = data['image'] as String?;
 
-      return imageUrl?.isNotEmpty == true ? imageUrl! : '';
+      return imageUrl?.isNotEmpty == true
+          ? '$imageUrl?w_600,h_400,c_fill,f_auto' // CDN + resize
+          : 'https://via.placeholder.com/150';
     } catch (e) {
       return 'https://via.placeholder.com/150';
     }
@@ -594,6 +598,70 @@ class Database {
     } catch (e) {
       developer.log('Lỗi lấy địa chỉ: $e');
       return '';
+    }
+  }
+
+  //lay gia
+  static Future<double> getFieldPrice(String fieldId) async {
+    try {
+      final fieldRef = _firestore.collection('fields').doc(fieldId);
+      final snap = await _firestore
+          .collection('prices')
+          .where('field_id', isEqualTo: fieldRef)
+          .get();
+
+      if (snap.docs.isEmpty) return 0.0;
+
+      double total = 0;
+      for (var doc in snap.docs) {
+        final num? price = doc.data()['price_amount'];
+        if (price != null) total += price.toDouble();
+      }
+
+      return total / snap.docs.length;
+    } catch (e) {
+      return 0.0;
+    }
+  }
+
+  static Future<Map<String, double>> getPricesForFields(
+    List<String> fieldIds,
+  ) async {
+    if (fieldIds.isEmpty) return {};
+
+    try {
+      final fieldRefs = fieldIds
+          .map((id) => _firestore.collection('fields').doc(id))
+          .toList();
+
+      final snap = await _firestore
+          .collection('prices')
+          .where('field_id', whereIn: fieldRefs)
+          .get();
+
+      final Map<String, List<double>> tempPrices = {};
+
+      for (var doc in snap.docs) {
+        final data = doc.data();
+        final fieldRef = data['field_id'];
+        if (fieldRef is DocumentReference) {
+          final fieldId = fieldRef.id;
+          final price = (data['price_amount'] as num?)?.toDouble();
+          if (price != null) {
+            tempPrices.putIfAbsent(fieldId, () => []).add(price);
+          }
+        }
+      }
+
+      final Map<String, double> avgPrices = {};
+      tempPrices.forEach((id, prices) {
+        final avg = prices.reduce((a, b) => a + b) / prices.length;
+        avgPrices[id] = avg;
+      });
+
+      return avgPrices;
+    } catch (e) {
+      return {};
     }
   }
 }
