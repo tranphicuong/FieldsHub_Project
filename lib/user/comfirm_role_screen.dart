@@ -58,9 +58,38 @@ class _ConfirmRoleScreenState extends State<ConfirmRoleScreen> {
       backgroundColor: const Color(0xFFE3F2FD),
       body: Stack(
         children: [
-          Positioned(top: -100, left: -30, child: _circle(235)),
-          Positioned(top: -50, left: 170, child: _circle(280)),
-          Positioned(bottom: -120, left: -60, child: _circle(220)),
+          // RESPONSIVE BACKGROUND CIRCLES
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final height = constraints.maxHeight;
+
+              return Stack(
+                children: [
+                  // Top-left circle
+                  Positioned(
+                    top: -height * 0.15,
+                    left: -width * 0.2,
+                    child: _circle(width * 0.65),
+                  ),
+                  // Top-right circle
+                  Positioned(
+                    top: -height * 0.1,
+                    left: width * 0.35,
+                    child: _circle(width * 0.75),
+                  ),
+                  // Bottom-left circle
+                  Positioned(
+                    bottom: -height * 0.2,
+                    left: -width * 0.25,
+                    child: _circle(width * 0.6),
+                  ),
+                ],
+              );
+            },
+          ),
+
+          // MAIN CONTENT
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(
@@ -134,6 +163,7 @@ class _ConfirmRoleScreenState extends State<ConfirmRoleScreen> {
                   Padding(
                     padding: EdgeInsets.only(bottom: 20),
                     child: RichText(
+                      textAlign: TextAlign.center, // CĂN GIỮA
                       text: TextSpan(
                         children: [
                           TextSpan(
@@ -162,7 +192,7 @@ class _ConfirmRoleScreenState extends State<ConfirmRoleScreen> {
           ),
         ],
       ),
-    );
+    ); // ĐÓNG Scaffold & return
   }
 
   Widget _circle(double size) => Container(

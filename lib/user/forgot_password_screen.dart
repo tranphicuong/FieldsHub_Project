@@ -65,7 +65,10 @@ class _ForgotPasswordState extends State<ForgotPassword> {
     final repassword = _repasswordController.text.trim();
     final otpInput = _otpController.text.trim();
 
-    if (email.isEmpty || newpassword.isEmpty || repassword.isEmpty || otpInput.isEmpty) {
+    if (email.isEmpty ||
+        newpassword.isEmpty ||
+        repassword.isEmpty ||
+        otpInput.isEmpty) {
       _showSnackBar("Vui lòng nhập đầy đủ thông tin");
       return;
     }
@@ -101,7 +104,10 @@ class _ForgotPasswordState extends State<ForgotPassword> {
 
       if (response.statusCode == 200 && result['success'] == true) {
         _showSnackBar("Đổi mật khẩu thành công");
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
       } else {
         _showSnackBar("Lỗi: ${result['error'] ?? result['message']}");
       }
@@ -127,45 +133,117 @@ class _ForgotPasswordState extends State<ForgotPassword> {
       backgroundColor: const Color(0xFFE3F2FD),
       body: Stack(
         children: [
-          Positioned(top: -100, left: -30, child: _circle(235)),
-          Positioned(top: -50, left: 170, child: _circle(280)),
-          Positioned(bottom: -120, left: -60, child: _circle(220)),
-          SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 110),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
+          // RESPONSIVE BACKGROUND CIRCLES
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final height = constraints.maxHeight;
+
+              return Stack(
                 children: [
-                  const SizedBox(height: 100),
-                  const Text("Forgot Password", style: TextStyle(fontSize: 25, color: Color.fromARGB(255, 3, 38, 239), fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 20),
-                  _textfield(controller: _emailController, label: "Email", icon: Icons.email_outlined, hint: "abc123@gmail.com"),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton(
-                      onPressed: _sendOtp,
-                      child: const Text("Send Confirmation Code Via Email", style: TextStyle(color: Colors.indigo, fontSize: 13, fontStyle: FontStyle.italic)),
-                    ),
+                  // Top-left circle
+                  Positioned(
+                    top: -height * 0.15,
+                    left: -width * 0.2,
+                    child: _circle(width * 0.65),
                   ),
-                  _textfield(controller: _otpController, label: "OTP", icon: Icons.mark_email_unread_sharp),
-                  const SizedBox(height: 10),
-                  _textfield(controller: _newpasswordController, label: "New Password", icon: Icons.lock_outline, obscure: true),
-                  const SizedBox(height: 10),
-                  _textfield(controller: _repasswordController, label: "Re-Password", icon: Icons.lock_outline_sharp, obscure: true),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _forgotpassword,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.indigo,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: const Text("Submit", style: TextStyle(color: Colors.white, fontSize: 16)),
-                    ),
+                  // Top-right circle
+                  Positioned(
+                    top: -height * 0.1,
+                    left: width * 0.35,
+                    child: _circle(width * 0.75),
+                  ),
+                  // Bottom-left circle
+                  Positioned(
+                    bottom: -height * 0.2,
+                    left: -width * 0.25,
+                    child: _circle(width * 0.6),
                   ),
                 ],
+              );
+            },
+          ),
+
+          // MAIN CONTENT (giữ nguyên của bạn)
+          SafeArea(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 110,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 100),
+                    const Text(
+                      "Forgot Password",
+                      style: TextStyle(
+                        fontSize: 25,
+                        color: Color.fromARGB(255, 3, 38, 239),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _textfield(
+                      controller: _emailController,
+                      label: "Email",
+                      icon: Icons.email_outlined,
+                      hint: "abc123@gmail.com",
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: _sendOtp,
+                        child: const Text(
+                          "Send Confirmation Code Via Email",
+                          style: TextStyle(
+                            color: Colors.indigo,
+                            fontSize: 13,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ),
+                    _textfield(
+                      controller: _otpController,
+                      label: "OTP",
+                      icon: Icons.mark_email_unread_sharp,
+                    ),
+                    const SizedBox(height: 10),
+                    _textfield(
+                      controller: _newpasswordController,
+                      label: "New Password",
+                      icon: Icons.lock_outline,
+                      obscure: true,
+                    ),
+                    const SizedBox(height: 10),
+                    _textfield(
+                      controller: _repasswordController,
+                      label: "Re-Password",
+                      icon: Icons.lock_outline_sharp,
+                      obscure: true,
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _forgotpassword,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.indigo,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text(
+                          "Submit",
+                          style: TextStyle(color: Colors.white, fontSize: 16),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -181,12 +259,20 @@ class _ForgotPasswordState extends State<ForgotPassword> {
       decoration: const BoxDecoration(
         color: Color(0xFF1565C0),
         shape: BoxShape.circle,
-        boxShadow: [BoxShadow(color: Colors.black, blurRadius: 8, offset: Offset(4, 4))],
+        boxShadow: [
+          BoxShadow(color: Colors.black, blurRadius: 8, offset: Offset(4, 4)),
+        ],
       ),
     );
   }
 
-  Widget _textfield({required TextEditingController controller, required String label, required IconData icon, String? hint, bool obscure = false}) {
+  Widget _textfield({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    String? hint,
+    bool obscure = false,
+  }) {
     return TextField(
       controller: controller,
       obscureText: obscure,

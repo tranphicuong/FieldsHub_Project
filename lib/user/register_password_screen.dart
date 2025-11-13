@@ -177,84 +177,112 @@ class _RegisterPasswordScreen extends State<RegisterPasswordScreen> {
       backgroundColor: Color(0xFFE3F2FD),
       body: Stack(
         children: [
-          Positioned(top: -100, left: -30, child: _circle(235)),
-          Positioned(top: -50, left: 170, child: _circle(280)),
-          Positioned(bottom: -120, left: -60, child: _circle(220)),
-          //noi dung
-          SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 30,
-                vertical: 150,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
+          // RESPONSIVE BACKGROUND CIRCLES
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final height = constraints.maxHeight;
+
+              return Stack(
                 children: [
-                  const SizedBox(height: 100),
-                  const Text(
-                    "Password-Recode",
-                    style: TextStyle(
-                      fontSize: 25,
-                      color: Color.fromARGB(255, 23, 3, 249),
-                      fontWeight: FontWeight.bold,
-                    ),
+                  // Top-left circle
+                  Positioned(
+                    top: -height * 0.15,
+                    left: -width * 0.2,
+                    child: _circle(width * 0.65),
                   ),
-                  const SizedBox(height: 20),
-                  //noi dung
-                  _textfield(
-                    controller: _passwordController,
-                    label: "Password",
-                    icon: Icons.lock_outline,
-                    obscure: true,
+                  // Top-right circle
+                  Positioned(
+                    top: -height * 0.1,
+                    left: width * 0.35,
+                    child: _circle(width * 0.75),
                   ),
-                  const SizedBox(height: 10),
-                  _textfield(
-                    controller: _repasswordController,
-                    label: "Re-Password",
-                    icon: Icons.lock_outline,
-                    obscure: true,
-                  ),
-                  const SizedBox(height: 0.5),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton(
-                      onPressed: _sendOtp,
-                      child: const Text(
-                        "Send Confirmation Code Via Email",
-                        style: TextStyle(
-                          color: Colors.indigo,
-                          fontSize: 13,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _textfield(
-                    controller: _otpController,
-                    label: "OTP",
-                    icon: Icons.mark_email_unread_outlined,
-                  ),
-                  const SizedBox(height: 10),
-                  //nut register
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _registerAccount,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.indigo,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: const Text(
-                        "Register",
-                        style: TextStyle(fontSize: 13, color: Colors.white),
-                      ),
-                    ),
+                  // Bottom-left circle
+                  Positioned(
+                    bottom: -height * 0.2,
+                    left: -width * 0.25,
+                    child: _circle(width * 0.6),
                   ),
                 ],
+              );
+            },
+          ),
+
+          // MAIN CONTENT (giữ nguyên của bạn)
+          SafeArea(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 150,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 100),
+                    const Text(
+                      "Password-Recode",
+                      style: TextStyle(
+                        fontSize: 25,
+                        color: Color.fromARGB(255, 23, 3, 249),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _textfield(
+                      controller: _passwordController,
+                      label: "Password",
+                      icon: Icons.lock_outline,
+                      obscure: true,
+                    ),
+                    const SizedBox(height: 10),
+                    _textfield(
+                      controller: _repasswordController,
+                      label: "Re-Password",
+                      icon: Icons.lock_outline,
+                      obscure: true,
+                    ),
+                    const SizedBox(height: 0.5),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: _sendOtp,
+                        child: const Text(
+                          "Send Confirmation Code Via Email",
+                          style: TextStyle(
+                            color: Colors.indigo,
+                            fontSize: 13,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _textfield(
+                      controller: _otpController,
+                      label: "OTP",
+                      icon: Icons.mark_email_unread_outlined,
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _registerAccount,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.indigo,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text(
+                          "Register",
+                          style: TextStyle(fontSize: 13, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
