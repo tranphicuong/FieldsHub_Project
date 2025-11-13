@@ -1,0 +1,30 @@
+name: Build Flutter iOS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      # Checkout code
+      - uses: actions/checkout@v3
+
+      # Cài Flutter
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+
+      # Lấy dependencies
+      - run: flutter pub get
+
+      # Build iOS unsigned
+      - run: flutter build ios --release --no-codesign
+
+      # Upload kết quả
+      - name: Upload iOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release
+          path: build/ios/iphoneos/
