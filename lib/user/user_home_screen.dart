@@ -16,6 +16,7 @@ class UserHomeScreen extends StatefulWidget {
 class _UserHomeScreenState extends State<UserHomeScreen> {
   String selectedCategory = "all";
   String userName = ' ';
+  String userAvatar = '';
   final currentUser = FirebaseAuth.instance.currentUser;
 
   RangeValues _priceRange = const RangeValues(100000, 200000);
@@ -44,6 +45,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       if (doc.exists) {
         setState(() {
           userName = doc.data()?['name'] ?? 'Người dùng';
+          userAvatar = doc.data()?['avatar'] ?? '';
         });
       }
     } catch (e) {
@@ -66,10 +68,17 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       elevation: 0,
       title: Row(
         children: [
-          const CircleAvatar(
-            backgroundColor: Colors.white,
+          CircleAvatar(
             radius: 22,
-            child: Icon(Icons.person, color: Colors.blue),
+            backgroundColor: Colors.white,
+            backgroundImage: userAvatar.isNotEmpty
+                ? NetworkImage(
+                    '$userAvatar?w=100,h=100,c_fill',
+                  ) // Resize nhỏ cho avatar
+                : null,
+            child: userAvatar.isEmpty
+                ? const Icon(Icons.person, color: Colors.blue)
+                : null,
           ),
           const SizedBox(width: 8),
           Column(
@@ -258,7 +267,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
               final address = await Database.getFieldAddress(doc.id);
               final avgRating = await Database.getFieldAverageRating(doc.id);
-          
+
               return {
                 'doc': doc,
                 'data': data,

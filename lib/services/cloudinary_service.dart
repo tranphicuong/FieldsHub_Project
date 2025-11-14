@@ -4,7 +4,7 @@ import 'package:cloudinary_public/cloudinary_public.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class CloudinaryService {
-  static const String cloudName = 'dqabxyru';
+  static const String cloudName = 'dbvydjyb6';
   static const String uploadPreset = 'field_upload';
 
   static final cloudinary = CloudinaryPublic(cloudName, uploadPreset);

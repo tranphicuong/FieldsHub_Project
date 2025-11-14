@@ -109,343 +109,394 @@ class _ReviewScreenState extends State<ReviewScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: Column(
-        children: [
-          Container(
-            margin: const EdgeInsets.all(12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 6,
-                  offset: Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    widget.fieldImage.isNotEmpty
-                        ? widget.fieldImage
-                        : "https://cdn.tuoitre.vn/471584752817336320/2023/12/28/san-bong-da-17037384362191179016543.jpg",
-                    width: 80,
-                    height: 80,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: Colors.green[100],
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.sports_soccer,
-                        size: 40,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
+      body: MediaQuery.removePadding(
+        context: context,
+        removeBottom: true, // Tắt padding tự động
+        child: GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: CustomScrollView(
+            slivers: [
+              // === PHẦN ĐẦU (không dùng viewInsets) ===
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    12,
+                    12,
+                    12,
+                    12,
+                  ), // Cố định, không đổi
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        widget.fieldName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
+                      // --- Thông tin sân ---
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 6,
+                              offset: Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(
+                                widget.fieldImage.isNotEmpty
+                                    ? widget.fieldImage
+                                    : "https://cdn.tuoitre.vn/471584752817336320/2023/12/28/san-bong-da-17037384362191179016543.jpg",
+                                width: 80,
+                                height: 80,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 80,
+                                  height: 80,
+                                  decoration: BoxDecoration(
+                                    color: Colors.green[100],
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.sports_soccer,
+                                    size: 40,
+                                    color: Colors.green,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.fieldName,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  FutureBuilder<double>(
+                                    future: Database.getFieldAverageRating(
+                                      widget.fieldId,
+                                    ),
+                                    builder: (context, snapshot) {
+                                      final avgRating = snapshot.data ?? 0.0;
+                                      return Row(
+                                        children: [
+                                          RatingBarIndicator(
+                                            rating: avgRating,
+                                            itemBuilder: (_, __) => Icon(
+                                              Icons.star,
+                                              color: Colors.amber,
+                                            ),
+                                            itemSize: 20,
+                                            itemCount: 5,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            avgRating > 0
+                                                ? avgRating.toStringAsFixed(1)
+                                                : "Chưa có",
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            _getRatingText(avgRating),
+                                            style: TextStyle(
+                                              color: _getRatingColor(avgRating),
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      FutureBuilder<double>(
-                        future: Database.getFieldAverageRating(widget.fieldId),
-                        builder: (context, snapshot) {
-                          final avgRating = snapshot.data ?? 0.0;
 
-                          return Row(
-                            children: [
-                              RatingBarIndicator(
-                                rating: avgRating,
-                                itemBuilder: (context, _) =>
-                                    const Icon(Icons.star, color: Colors.amber),
-                                itemSize: 20,
-                                itemCount: 5,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                avgRating > 0
-                                    ? avgRating.toStringAsFixed(1)
-                                    : "Chưa có",
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                _getRatingText(avgRating),
-                                style: TextStyle(
-                                  color: _getRatingColor(avgRating),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+                      const SizedBox(height: 12),
 
-          if (_canWriteReview && !_isWriting)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: OutlinedButton.icon(
-                onPressed: () => setState(() => _isWriting = true),
-                icon: const Icon(Icons.edit, color: Colors.blue),
-                label: const Text(
-                  "Viết đánh giá",
-                  style: TextStyle(color: Colors.blue),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.blue),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-
-          if (_isWriting)
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6)],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Đánh giá của bạn",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  const SizedBox(height: 16),
-                  Center(
-                    child: RatingBar.builder(
-                      initialRating: 0,
-                      minRating: 1,
-                      itemCount: 5,
-                      itemSize: 40,
-                      itemBuilder: (context, _) =>
-                          const Icon(Icons.star, color: Colors.amber),
-                      onRatingUpdate: (rating) =>
-                          setState(() => _userRating = rating),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _controller,
-                    maxLines: 4,
-                    decoration: InputDecoration(
-                      hintText: 'Chia sẻ trải nghiệm của bạn...',
-                      filled: true,
-                      fillColor: Colors.grey[100],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: _sendReview,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue[800],
-                            padding: const EdgeInsets.symmetric(vertical: 14),
+                      // --- Nút viết đánh giá ---
+                      if (_canWriteReview && !_isWriting)
+                        OutlinedButton.icon(
+                          onPressed: () => setState(() => _isWriting = true),
+                          icon: Icon(Icons.edit, color: Colors.blue),
+                          label: Text(
+                            "Viết đánh giá",
+                            style: TextStyle(color: Colors.blue),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: Colors.blue),
+                            padding: EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text(
-                            "Gửi đánh giá",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
+                        ),
+
+                      // --- Form viết đánh giá (không animation) ---
+                      if (_isWriting)
+                        Container(
+                          margin: EdgeInsets.symmetric(vertical: 8),
+                          padding: EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(color: Colors.black12, blurRadius: 6),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Đánh giá của bạn",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Center(
+                                child: RatingBar.builder(
+                                  initialRating: 0,
+                                  minRating: 1,
+                                  itemCount: 5,
+                                  itemSize: 40,
+                                  itemBuilder: (_, __) =>
+                                      Icon(Icons.star, color: Colors.amber),
+                                  onRatingUpdate: (rating) =>
+                                      setState(() => _userRating = rating),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              TextField(
+                                controller: _controller,
+                                maxLines: 4,
+                                decoration: InputDecoration(
+                                  hintText: 'Chia sẻ trải nghiệm của bạn...',
+                                  filled: true,
+                                  fillColor: Colors.grey[100],
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      onPressed: _sendReview,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.blue[800],
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: 14,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        "Gửi đánh giá",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  OutlinedButton(
+                                    onPressed: () => setState(() {
+                                      _isWriting = false;
+                                      _userRating = 0;
+                                      _controller.clear();
+                                    }),
+                                    style: OutlinedButton.styleFrom(
+                                      side: BorderSide(color: Colors.grey),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    child: Text("Hủy"),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      OutlinedButton(
-                        onPressed: () => setState(() {
-                          _isWriting = false;
-                          _userRating = 0;
-                          _controller.clear();
-                        }),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Colors.grey),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text("Hủy"),
-                      ),
+
+                      const SizedBox(height: 12),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
 
-          Expanded(
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: Database.getReviewsByField(widget.fieldId),
-              builder: (context, snapshot) {
-                final currentData = snapshot.data ?? [];
-
-                if (snapshot.connectionState == ConnectionState.waiting &&
-                    currentData.isEmpty) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (currentData.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.rate_review_outlined,
-                          size: 80,
-                          color: Colors.grey[400],
+              // === DANH SÁCH ĐÁNH GIÁ ===
+              StreamBuilder<List<Map<String, dynamic>>>(
+                stream: Database.getReviewsByField(widget.fieldId),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return SliverToBoxAdapter(
+                      child: Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                        const SizedBox(height: 20),
-                        Text(
-                          "Chưa có đánh giá nào",
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 18,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: currentData.length,
-                  itemBuilder: (context, index) {
-                    final r = currentData[index];
-                    final isMe =
-                        (r['user_id'] as DocumentReference?)?.id ==
-                        currentUser?.uid;
-                    final userName = isMe
-                        ? "Bạn"
-                        : (r['user_name'] ?? 'Ẩn danh');
-                    final date = r['created_at'] != null
-                        ? DateFormat('dd/MM/yyyy').format(r['created_at'])
-                        : 'Không rõ';
-
-                    return Container(
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: isMe ? Colors.blue[50] : Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: isMe
-                            ? Border.all(color: Colors.blue, width: 1)
-                            : null,
-                        boxShadow: [
-                          BoxShadow(color: Colors.black12, blurRadius: 4),
-                        ],
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          CircleAvatar(
-                            radius: 22,
-                            backgroundColor: Colors.grey[200],
-                            backgroundImage:
-                                r['user_avatar'].toString().isNotEmpty
-                                ? NetworkImage(r['user_avatar'])
-                                : null,
-                            child: r['user_avatar'].toString().isEmpty
-                                ? const Icon(Icons.person, color: Colors.grey)
-                                : null,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      userName,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15,
-                                        color: isMe
-                                            ? Colors.blue[800]
-                                            : Colors.black87,
-                                      ),
-                                    ),
-                                    Text(
-                                      date,
-                                      style: const TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 11,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                RatingBarIndicator(
-                                  rating:
-                                      (r['rating'] as num?)?.toDouble() ?? 0,
-                                  itemBuilder: (context, _) => const Icon(
-                                    Icons.star,
-                                    color: Colors.amber,
-                                  ),
-                                  itemSize: 18,
-                                  itemCount: 5,
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  r['comment'],
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
                       ),
                     );
-                  },
-                );
-              },
-            ),
+                  }
+
+                  final reviews = snapshot.data ?? [];
+
+                  if (reviews.isEmpty) {
+                    return SliverToBoxAdapter(
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.rate_review_outlined,
+                              size: 80,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 20),
+                            Text(
+                              "Chưa có đánh giá nào",
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 18,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  return SliverList(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final r = reviews[index];
+                      final isMe =
+                          (r['user_id'] as DocumentReference?)?.id ==
+                          currentUser?.uid;
+                      final userName = isMe
+                          ? "Bạn"
+                          : (r['user_name'] ?? 'Ẩn danh');
+                      final date = r['created_at'] != null
+                          ? DateFormat('dd/MM/yyyy').format(r['created_at'])
+                          : 'Không rõ';
+
+                      return Container(
+                        margin: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: isMe ? Colors.blue[50] : Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: isMe
+                              ? Border.all(color: Colors.blue, width: 1)
+                              : null,
+                          boxShadow: [
+                            BoxShadow(color: Colors.black12, blurRadius: 4),
+                          ],
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              radius: 22,
+                              backgroundColor: Colors.grey[200],
+                              backgroundImage:
+                                  r['user_avatar'].toString().isNotEmpty
+                                  ? NetworkImage(
+                                      '${r['user_avatar']}?w=80,h=80,c_fill,f_auto',
+                                    )
+                                  : null,
+                              child: r['user_avatar'].toString().isEmpty
+                                  ? Icon(
+                                      Icons.person,
+                                      color: Colors.grey,
+                                      size: 28,
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        userName,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                          color: isMe
+                                              ? Colors.blue[800]
+                                              : Colors.black87,
+                                        ),
+                                      ),
+                                      Text(
+                                        date,
+                                        style: TextStyle(
+                                          color: Colors.grey,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  RatingBarIndicator(
+                                    rating:
+                                        (r['rating'] as num?)?.toDouble() ?? 0,
+                                    itemBuilder: (_, __) =>
+                                        Icon(Icons.star, color: Colors.amber),
+                                    itemSize: 18,
+                                    itemCount: 5,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    r['comment'],
+                                    style: TextStyle(fontSize: 14),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }, childCount: reviews.length),
+                  );
+                },
+              ),
+
+              SliverToBoxAdapter(child: SizedBox(height: 20)),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
