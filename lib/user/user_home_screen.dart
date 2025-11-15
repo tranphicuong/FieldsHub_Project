@@ -1,10 +1,10 @@
 import 'package:fieldshub/Database/database.dart';
-import 'package:fieldshub/user/chat_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fieldshub/widget/field_booking_card.dart';
 import 'package:fieldshub/user/filter_dialog.dart';
+import 'package:fieldshub/user/ChatListScreen.dart';
 
 class UserHomeScreen extends StatefulWidget {
   const UserHomeScreen({Key? key}) : super(key: key);
@@ -106,11 +106,27 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           onPressed: () {
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) => const ChatScreen(
-                  fieldId: "default",
-                  fieldName: "Hỗ trợ chung",
-                ),
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) =>
+                    const ChatListScreen(),
+                transitionsBuilder:
+                    (context, animation, secondaryAnimation, child) {
+                      const begin = Offset(1.0, 0.0); 
+                      const end = Offset.zero;
+                      const curve = Curves.easeInOut;
+
+                      var tween = Tween(
+                        begin: begin,
+                        end: end,
+                      ).chain(CurveTween(curve: curve));
+                      var offsetAnimation = animation.drive(tween);
+
+                      return SlideTransition(
+                        position: offsetAnimation,
+                        child: FadeTransition(opacity: animation, child: child),
+                      );
+                    },
+                transitionDuration: const Duration(milliseconds: 320),
               ),
             );
           },

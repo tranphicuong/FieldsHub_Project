@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fieldshub/user/chat_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:intl/intl.dart';
@@ -262,22 +263,18 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () => showDialog(
-                            context: context,
-                            builder: (_) => AlertDialog(
-                              title: const Text("Chat"),
-                              content: const Text(
-                                "Tính năng đang được phát triển.",
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text("Đóng"),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ChatScreen(
+                                  fieldId: widget.fieldId,
+                                  fieldName: name,
                                 ),
-                              ],
-                            ),
-                          ),
-                        
+                              ),
+                            );
+                          },
+
                           label: const Text("Chat"),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.blue,
@@ -302,7 +299,7 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                               ),
                             );
                           },
-                          
+
                           label: const Text("Xem đánh giá"),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.orange,
@@ -349,7 +346,7 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                           await _fetchBookedSlots(picked);
                         }
                       },
-                      icon: const Icon(Icons.calendar_today, size: 16),
+                      icon: const Icon(Icons.calendar_today, size: 13),
                       label: const Text("Chọn ngày"),
                     ),
                   ],
@@ -475,9 +472,7 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              if (isBooked) ...[
-                                const SizedBox(width: 4),
-                              ],
+                              if (isBooked) ...[const SizedBox(width: 4)],
                             ],
                           ),
                         ),

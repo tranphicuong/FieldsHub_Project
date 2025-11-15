@@ -664,4 +664,179 @@ class Database {
       return {};
     }
   }
+
+  //tao id cho 2 user
+  static String getConversationId(String uid1, String uid2) {
+    final sorted = [uid1, uid2]..sort();
+    return '${sorted[0]}_${sorted[1]}';
+  }
+
+  //tao chat neu chua ton tai
+  static Future<String> createOrGetConversation({
+    required String currentUserId,
+    required String fieldId, 
+    required String fieldName,
+  }) async {
+    final ownerId = await getFieldOwnerId(fieldId);
+    if (ownerId == null) throw Exception("Không tìm thấy chủ sân");
+
+    final convId = getConversationId(currentUserId, ownerId);
+    final convRef = _firestore.collection('conversations').doc(convId);
+
+    final doc = await convRef.get();
+    if (doc.exists) return convId;
+
+    final ownerInfo = await getFieldOwnerInfo(fieldId);
+
+    await convRef.set({
+      'users': [currentUserId, ownerId],
+      'fieldId': fieldId,
+      'fieldName': fieldName,
+      'ownerName': ownerInfo['name'],
+      'ownerAvatar': ownerInfo['avatar'],
+      'lastMessage': '',
+      'lastMessageAt': FieldValue.serverTimestamp(),
+      'lastSender': '',
+      'createdAt': FieldValue.serverTimestamp(),
+      'unreadCount': {currentUserId: 0, ownerId: 0},
+      'deletedBy': {currentUserId: false, ownerId: false},
+    });
+
+    return convId;
+  }
+
+  //gui tin nhan
+  static Future<void> sendMessage({
+    required String convId,
+    required String text,
+    required String senderId,
+    required String receiverId,
+  }) async {
+    final convRef = _firestore.collection('conversations').doc(convId);
+    final msgRef = convRef.collection('messages').doc();
+
+    final batch = _firestore.batch();
+    //tao tin nhan
+    batch.set(msgRef, {
+      'text': text.trim(),
+      'senderId': senderId,
+      'type': 'text',
+      'createdAt': FieldValue.serverTimestamp(),
+      'seenBy': {senderId: FieldValue.serverTimestamp(), receiverId: null},
+      'deletedBy': {senderId: false, receiverId: false},
+    });
+    //cap nhat
+    batch.update(convRef, {
+      'lastMessage': text.trim(),
+      'lastMessageAt': FieldValue.serverTimestamp(),
+      'lastSender': senderId,
+      'unreadCount.$receiverId': FieldValue.increment(1),
+      'unreadCount.$senderId': 0,
+    });
+
+    await batch.commit();
+  }
+
+  //danh dau da doc
+  static Future<void> markConversationAsRead({
+    required String convId,
+    required String userId,
+  }) async {
+    final convRef = _firestore.collection('conversations').doc(convId);
+    final batch = _firestore.batch();
+
+    // Reset unread count
+    batch.update(convRef, {'unreadCount.$userId': 0});
+    //cap nhat seenby cho all tin nhan chua doc
+    final messagesSnap = await convRef
+        .collection('messages')
+        .where('senderId', isNotEqualTo: userId)
+        .where('seenBy.$userId', isEqualTo: null)
+        .get();
+
+    for (var doc in messagesSnap.docs) {
+      batch.update(doc.reference, {
+        'seenBy.$userId': FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+  }
+
+  //strem danh sach tin nhan
+  static Stream<QuerySnapshot> getMessagesStream(String convId) {
+    return _firestore
+        .collection('conversations')
+        .doc(convId)
+        .collection('messages')
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
+
+  //stream danh sach cuoc tro chuyen cua user
+  static Stream<QuerySnapshot> getConversationsStream(String userId) {
+    return _firestore
+        .collection('conversations')
+        .where('users', arrayContains: userId)
+        .orderBy('lastMessageAt', descending: true)
+        .snapshots();
+  }
+
+  //lay ten nguoi dung tu id
+  static Future<String> getUserName(String uid) async {
+    try {
+      final doc = await _firestore.collection('users').doc(uid).get();
+      return doc.data()?['name'] ?? 'Người dùng';
+    } catch (e) {
+      return 'Người dùng';
+    }
+  }
+
+  //xoa tin nhan
+  static Future<void> deleteMessage({
+    required String convId,
+    required String messageId,
+    required String userId,
+  }) async {
+    final msgRef = _firestore
+        .collection('conversations')
+        .doc(convId)
+        .collection('messages')
+        .doc(messageId);
+
+    await msgRef.update({'deletedBy.$userId': true});
+  }
+
+  //xoa cuoc tro chuyen
+  static Future<void> deleteConversation({
+    required String convId,
+    required String userId,
+  }) async {
+    final convRef = _firestore.collection('conversations').doc(convId);
+    await convRef.update({'deletedBy.$userId': true, 'unreadCount.$userId': 0});
+  }
+
+  //kiem tra xoa
+  static bool isConversationDeleted(Map<String, dynamic> conv, String userId) {
+    return (conv['deletedBy'] as Map<String, dynamic>?)?[userId] == true;
+  }
+
+  //lay ten va anh chu san
+  static Future<Map<String, String>> getFieldOwnerInfo(String fieldId) async {
+    final ownerId = await getFieldOwnerId(fieldId);
+    if (ownerId == null) return {'name': 'Chủ sân', 'avatar': ''};
+
+    try {
+      final doc = await _firestore.collection('users').doc(ownerId).get();
+      if (!doc.exists) return {'name': 'Chủ sân', 'avatar': ''};
+
+      final data = doc.data()!;
+      return {
+        'name': data['name']?.toString() ?? 'Chủ sân',
+        'avatar': (data['avatar'] as String?) ?? '',
+      };
+    } catch (e) {
+      return {'name': 'Chủ sân', 'avatar': ''};
+    }
+  }
 }

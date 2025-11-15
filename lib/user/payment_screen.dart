@@ -175,7 +175,7 @@ class _PaymentPageState extends State<PaymentPage> {
         address: fetchedAddress,
         startTime: widget.startTime!,
         endTime: widget.endTime!,
-        totalAmount: widget.totalAmount, 
+        totalAmount: widget.totalAmount,
         depositAmount: widget.amount,
         paymentMethod: widget.paymentMethod,
         bookingCode: bookingCode,

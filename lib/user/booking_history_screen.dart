@@ -40,40 +40,38 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
       body: Column(
         children: [
           Container(
-            color: Colors.blue[100],
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: statusTabs.map((status) {
-                final selected = selectedStatus == status;
-                return GestureDetector(
-                  onTap: () => setState(() => selectedStatus = status),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 10,
-                      horizontal: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(
-                          color: selected
-                              ? Colors.blue[800]!
-                              : Colors.transparent,
-                          width: 3,
-                        ),
-                      ),
-                    ),
-                    child: Text(
-                      status,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: selected ? Colors.blue[800] : Colors.black54,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
+  color: Colors.blue[100],
+  child: SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    child: Row(
+      children: statusTabs.map((status) {
+        final selected = selectedStatus == status;
+        return GestureDetector(
+          onTap: () => setState(() => selectedStatus = status),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: selected ? Colors.blue[800]! : Colors.transparent,
+                  width: 3,
+                ),
+              ),
+            ),
+            child: Text(
+              status,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: selected ? Colors.blue[800] : Colors.black54,
+              ),
             ),
           ),
+        );
+      }).toList(),
+    ),
+  ),
+),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
