@@ -338,6 +338,7 @@ class Database {
   }
 
   // notifications
+  
   static Future<void> sendNotification({
     required String userId,
     required String title,
@@ -348,25 +349,59 @@ class Database {
     String? paymentMethod,
     String? bookingCode,
   }) async {
-    try {
-      final userRef = _firestore.collection('users').doc(userId);
-
-      await _firestore.collection('notifications').add({
-        'user_id': userRef,
-        'title': title,
-        'subtitle': subtitle,
+    return _sendNotificationWithFCM(
+      userId: userId,
+      title: title,
+      body: subtitle,
+      data: {
         'field_name': fieldName ?? '',
         'address': address ?? '',
         'time_slot': timeSlot ?? '',
         'payment_method': paymentMethod ?? '',
         'booking_code': bookingCode ?? '',
-        'created_at': FieldValue.serverTimestamp(),
+        'click_action': 'FLUTTER_NOTIFICATION_CLICK',
+      },
+    );
+  }
+
+  // Hàm phụ – gửi cả vào Firestore + FCM push thật
+  static Future<void> _sendNotificationWithFCM({
+    required String userId,
+    required String title,
+    required String body,
+    required Map<String, String> data,
+  }) async {
+    try {
+      final userRef = _firestore.collection('users').doc(userId);
+
+      // 1. Lưu thông báo vào Firestore (để hiển thị trong app)
+      await _firestore.collection('notifications').add({
+        'user_id': userRef,
+        'title': title.trim(),
+        'subtitle': body.trim(),
+        'field_name': data['field_name']?.trim() ?? '',
+        'address': data['address']?.trim() ?? '',
+        'time_slot': data['time_slot']?.trim() ?? '',
+        'payment_method': data['payment_method']?.trim() ?? '',
+        'booking_code': data['booking_code']?.trim() ?? '',
         'is_read': false,
+        'created_at': FieldValue.serverTimestamp(),
       });
+
+      // 2. Gửi push thật lên điện thoại qua FCM
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      final fcmToken = userDoc.data()?['fcm_token'] as String?;
+
+      if (fcmToken != null && fcmToken.isNotEmpty) {
+        await _firestore.collection('fcm_messages').add({
+          'to': fcmToken,
+          'notification': {'title': title, 'body': body},
+          'data': data,
+          'time_to_live': 86400, // 24h
+        });
+      }
     } catch (e) {
-      developer.log(
-        'Gửi thông báo thất bại: $e',
-      ); // <-- ĐÃ SỬA: dùng developer.log
+      developer.log('Gửi thông báo thất bại (không ảnh hưởng app): $e');
     }
   }
 
@@ -674,7 +709,7 @@ class Database {
   //tao chat neu chua ton tai
   static Future<String> createOrGetConversation({
     required String currentUserId,
-    required String fieldId, 
+    required String fieldId,
     required String fieldName,
   }) async {
     final ownerId = await getFieldOwnerId(fieldId);
@@ -686,14 +721,17 @@ class Database {
     final doc = await convRef.get();
     if (doc.exists) return convId;
 
-    final ownerInfo = await getFieldOwnerInfo(fieldId);
+    final ownerDoc = await _firestore.collection('users').doc(ownerId).get();
+    final ownerData = ownerDoc.data() ?? {};
+    final ownerName = ownerData['name']?.toString() ?? 'Chủ sân';
+    final ownerAvatar = (ownerData['avatar'] as String?)?.trim() ?? '';
 
     await convRef.set({
       'users': [currentUserId, ownerId],
       'fieldId': fieldId,
       'fieldName': fieldName,
-      'ownerName': ownerInfo['name'],
-      'ownerAvatar': ownerInfo['avatar'],
+      'ownerName': ownerName,
+      'ownerAvatar': ownerAvatar,
       'lastMessage': '',
       'lastMessageAt': FieldValue.serverTimestamp(),
       'lastSender': '',
@@ -711,12 +749,23 @@ class Database {
     required String text,
     required String senderId,
     required String receiverId,
+    required String fieldId,
+    required String fieldName,
   }) async {
     final convRef = _firestore.collection('conversations').doc(convId);
-    final msgRef = convRef.collection('messages').doc();
 
+    final doc = await convRef.get();
+    if (!doc.exists) {
+      await createOrGetConversation(
+        currentUserId: senderId,
+        fieldId: fieldId,
+        fieldName: fieldName,
+      );
+    }
+
+    final msgRef = convRef.collection('messages').doc();
     final batch = _firestore.batch();
-    //tao tin nhan
+
     batch.set(msgRef, {
       'text': text.trim(),
       'senderId': senderId,
@@ -725,7 +774,7 @@ class Database {
       'seenBy': {senderId: FieldValue.serverTimestamp(), receiverId: null},
       'deletedBy': {senderId: false, receiverId: false},
     });
-    //cap nhat
+
     batch.update(convRef, {
       'lastMessage': text.trim(),
       'lastMessageAt': FieldValue.serverTimestamp(),
@@ -733,32 +782,6 @@ class Database {
       'unreadCount.$receiverId': FieldValue.increment(1),
       'unreadCount.$senderId': 0,
     });
-
-    await batch.commit();
-  }
-
-  //danh dau da doc
-  static Future<void> markConversationAsRead({
-    required String convId,
-    required String userId,
-  }) async {
-    final convRef = _firestore.collection('conversations').doc(convId);
-    final batch = _firestore.batch();
-
-    // Reset unread count
-    batch.update(convRef, {'unreadCount.$userId': 0});
-    //cap nhat seenby cho all tin nhan chua doc
-    final messagesSnap = await convRef
-        .collection('messages')
-        .where('senderId', isNotEqualTo: userId)
-        .where('seenBy.$userId', isEqualTo: null)
-        .get();
-
-    for (var doc in messagesSnap.docs) {
-      batch.update(doc.reference, {
-        'seenBy.$userId': FieldValue.serverTimestamp(),
-      });
-    }
 
     await batch.commit();
   }
@@ -838,5 +861,99 @@ class Database {
     } catch (e) {
       return {'name': 'Chủ sân', 'avatar': ''};
     }
+  }
+
+  // danh dau cuoc tro chuyen da doc
+  static Future<void> markConversationAsRead({
+    required String convId,
+    required String userId,
+  }) async {
+    final convRef = _firestore.collection('conversations').doc(convId);
+    final batch = _firestore.batch();
+
+    batch.update(convRef, {'unreadCount.$userId': 0});
+
+    final messagesSnap = await convRef
+        .collection('messages')
+        .where('senderId', isNotEqualTo: userId)
+        .where('seenBy.$userId', isEqualTo: null)
+        .get();
+
+    for (final doc in messagesSnap.docs) {
+      batch.update(doc.reference, {
+        'seenBy.$userId': FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+  }
+
+  String generateVietQR({
+    required String bankBin,
+    required String accountNumber,
+    required String accountName,
+    required double amount,
+    required String description,
+  }) {
+    String normalizedName = accountName
+        .toUpperCase()
+        .replaceAll(RegExp(r'[ÀÁÂÃÄÅàáâãäå]'), 'A')
+        .replaceAll(RegExp(r'[ÈÉÊËèéêë]'), 'E')
+        .replaceAll(RegExp(r'[ÌÍÎÏìíîï]'), 'I')
+        .replaceAll(RegExp(r'[ÒÓÔÕÖòóôõö]'), 'O')
+        .replaceAll(RegExp(r'[ÙÚÛÜùúûü]'), 'U')
+        .replaceAll(RegExp(r'[Đđ]'), 'D')
+        .replaceAll(RegExp(r'[^A-Z0-9 ]'), '')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), ' ');
+
+    String payload = "000201";
+    payload += "010212";
+    payload += "0010A0000007270129";
+
+    String bankInfo = "00${bankBin.length.toString().padLeft(2, '0')}$bankBin";
+    bankInfo +=
+        "01${accountNumber.length.toString().padLeft(2, '0')}$accountNumber";
+    payload +=
+        "38${(bankInfo.length + 4).toString().padLeft(2, '0')}00${bankInfo.length.toString().padLeft(2, '0')}$bankInfo";
+
+    payload += "52049399";
+    payload += "5303704";
+
+    // Số tiền
+    String amountStr = amount.toInt().toString();
+    payload += "54${amountStr.length.toString().padLeft(2, '0')}$amountStr";
+
+    payload += "5802VN";
+
+    // Tên chủ tài khoản
+    payload +=
+        "59${normalizedName.length.toString().padLeft(2, '0')}$normalizedName";
+
+    // Nội dung chuyển khoản
+    String descField =
+        "07${description.length.toString().padLeft(2, '0')}$description";
+    payload += "62${descField.length.toString().padLeft(2, '0')}$descField";
+
+    // CRC
+    payload += "6304";
+    String crc = _calculateCRC16(payload);
+    return payload + crc;
+  }
+
+  String _calculateCRC16(String data) {
+    int crc = 0xFFFF;
+    for (int i = 0; i < data.length; i++) {
+      crc ^= (data.codeUnitAt(i) << 8);
+      for (int j = 0; j < 8; j++) {
+        if ((crc & 0x8000) != 0) {
+          crc = (crc << 1) ^ 0x1021;
+        } else {
+          crc <<= 1;
+        }
+        crc &= 0xFFFF;
+      }
+    }
+    return crc.toRadixString(16).toUpperCase().padLeft(4, '0');
   }
 }

@@ -3,12 +3,12 @@ import 'package:fieldshub/owner/FieldListScreen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart'; 
-import 'package:fieldshub/user/chat_screen.dart';
+import 'package:intl/intl.dart';
 import 'package:fieldshub/owner/ManageFieldScreen.dart';
 import 'package:fieldshub/owner/OrderScreen.dart';
 import 'package:fieldshub/owner/RevenueReportScreen.dart';
 import 'package:fieldshub/owner/ReviewScreen.dart';
+import 'package:fieldshub/user/ChatListScreen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -55,50 +55,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
         .where('user_id', isEqualTo: '/users/${user.uid}')
         .where('is_read', isEqualTo: false)
         .snapshots()
-        .listen(
-      (snapshot) {
-        print("Số lượng thông báo chưa đọc: ${snapshot.docs.length} - Time: ${DateFormat('HH:mm:ss').format(DateTime.now())}");
-        setState(() => _unreadNotificationsCount = snapshot.docs.length);
-      },
-      onError: (error) => print("Lỗi truy vấn thông báo: $error"),
-    );
+        .listen((snapshot) {
+          print(
+            "Số lượng thông báo chưa đọc: ${snapshot.docs.length} - Time: ${DateFormat('HH:mm:ss').format(DateTime.now())}",
+          );
+          setState(() => _unreadNotificationsCount = snapshot.docs.length);
+        }, onError: (error) => print("Lỗi truy vấn thông báo: $error"));
   }
 
   Stream<Map<String, int>> _getFieldCounts() {
-  final now = DateTime.now();
-  final startOfDay = DateTime(now.year, now.month, now.day);
-  final endOfDay = startOfDay.add(const Duration(days: 1));
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
 
-  return FirebaseFirestore.instance
-      .collection('fields')
-      .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-      .where('createdAt', isLessThan: Timestamp.fromDate(endOfDay))
-      .snapshots()
-      .map((snapshot) {
-    int footballCount = 0;
-    int billiardCount = 0;
+    return FirebaseFirestore.instance
+        .collection('fields')
+        .where(
+          'createdAt',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
+        )
+        .where('createdAt', isLessThan: Timestamp.fromDate(endOfDay))
+        .snapshots()
+        .map((snapshot) {
+          int footballCount = 0;
+          int billiardCount = 0;
 
-    for (var doc in snapshot.docs) {
-      final data = doc.data();
-      final sport = (data['sport'] ?? '').toString().toLowerCase();
+          for (var doc in snapshot.docs) {
+            final data = doc.data();
+            final sport = (data['sport'] ?? '').toString().toLowerCase();
 
-      if (sport.contains('bong') || sport.contains('football') || sport.contains('soccer')) {
-        footballCount++;
-      } else if (sport.contains('bida') || sport.contains('billiard') || sport.contains('pool')) {
-        billiardCount++;
-      }
-    }
+            if (sport.contains('bong') ||
+                sport.contains('football') ||
+                sport.contains('soccer')) {
+              footballCount++;
+            } else if (sport.contains('bida') ||
+                sport.contains('billiard') ||
+                sport.contains('pool')) {
+              billiardCount++;
+            }
+          }
 
-    return {'Bóng Đá': footballCount, 'Bida': billiardCount};
-  });
-}
-
-
-
+          return {'Bóng Đá': footballCount, 'Bida': billiardCount};
+        });
+  }
 
   @override
   Widget build(BuildContext context) {
-    
     return Scaffold(
       backgroundColor: const Color(0xFFE8F3FF),
       appBar: AppBar(
@@ -132,16 +134,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Stack(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+                  icon: const Icon(
+                    Icons.chat_bubble_outline,
+                    color: Colors.white,
+                  ),
                   tooltip: "Chat",
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (context) => ChatScreen(
-                          fieldId: '',
-                          fieldName: 'Tên sân mặc định',
-                        ),
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            const ChatListScreen(),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) {
+                              const begin = Offset(1.0, 0.0);
+                              const end = Offset.zero;
+                              const curve = Curves.easeInOut;
+
+                              var tween = Tween(
+                                begin: begin,
+                                end: end,
+                              ).chain(CurveTween(curve: curve));
+                              var offsetAnimation = animation.drive(tween);
+
+                              return SlideTransition(
+                                position: offsetAnimation,
+                                child: FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                ),
+                              );
+                            },
+                        transitionDuration: const Duration(milliseconds: 320),
                       ),
                     );
                   },
@@ -308,9 +332,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) =>  ManageFieldScreen(),
-                      ),
+                      MaterialPageRoute(builder: (_) => ManageFieldScreen()),
                     );
                   },
                 ),
@@ -322,8 +344,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (_) => DanhGiaCuaToiScreen(
-     ownerUserId: FirebaseAuth.instance.currentUser!.uid, // Chỉ truyền ID
-    ),
+                          ownerUserId: FirebaseAuth
+                              .instance
+                              .currentUser!
+                              .uid, // Chỉ truyền ID
+                        ),
                       ),
                     );
                   },
@@ -331,20 +356,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
             const SizedBox(height: 20),
-                        StreamBuilder<Map<String, int>>(
+            StreamBuilder<Map<String, int>>(
               stream: _getFieldCounts(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (!snapshot.hasData) {
-                  return const Center(child: Text("Không có dữ liệu sân hoặc lỗi kết nối"));
+                  return const Center(
+                    child: Text("Không có dữ liệu sân hoặc lỗi kết nối"),
+                  );
                 }
 
                 final fieldCounts = snapshot.data!;
                 final footballCount = fieldCounts['Bóng Đá'] ?? 0;
                 final billiardCount = fieldCounts['Bida'] ?? 0;
-              
+
                 return Column(
                   children: [
                     _buildFieldItem(
@@ -358,7 +385,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           context,
                           MaterialPageRoute(
                             builder: (_) => const DanhSachSanScreen(
-                              initialFilter: 'Bóng Đá', 
+                              initialFilter: 'Bóng Đá',
                             ),
                           ),
                         );
@@ -374,9 +401,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const DanhSachSanScreen(
-                              initialFilter: 'Bida', 
-                            ),
+                            builder: (_) =>
+                                const DanhSachSanScreen(initialFilter: 'Bida'),
                           ),
                         );
                       },
@@ -442,64 +468,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required String location,
     required String details,
     required String sub,
-     required VoidCallback onTap, 
+    required VoidCallback onTap,
   }) {
-   return InkWell(
-    onTap: onTap, 
-    borderRadius: BorderRadius.circular(12),
-    child: Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 5, offset: Offset(0, 3)),
-        ],
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 40, color: Colors.blueAccent),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 5,
+              offset: Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 40, color: Colors.blueAccent),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  Text(
+                    location,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  Text(
+                    details,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+            Column(
               children: [
                 Text(
-                  title,
+                  sub,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                    color: Colors.black,
                   ),
                 ),
-                Text(
-                  location,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                Text(
-                  details,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
+                const SizedBox(height: 3),
+                const Icon(Icons.chevron_right, color: Colors.grey),
               ],
             ),
-          ),
-          Column(
-            children: [
-              Text(
-                sub,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                ),
-              ),
-              const SizedBox(height: 3),
-              const Icon(Icons.chevron_right, color: Colors.grey),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-   );
+    );
   }
 }
 

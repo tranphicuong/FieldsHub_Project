@@ -27,6 +27,11 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
   String paymentMethod = 'Cọc';
   Set<String> bookedSlots = {};
   final List<String> timeSlots = _generateHalfHourSlots();
+  
+  // Cache dữ liệu
+  double? _cachedPrice;
+  double? _cachedRating;
+  bool _isLoadingData = false;
 
   static List<String> _generateHalfHourSlots() {
     final slots = <String>[];
@@ -38,6 +43,37 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
       }
     }
     return slots;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Load dữ liệu ngay khi khởi tạo
+    _loadInitialData();
+  }
+
+  Future<void> _loadInitialData() async {
+    if (_isLoadingData) return;
+    _isLoadingData = true;
+    
+    try {
+      // Load song song giá và rating
+      final results = await Future.wait([
+        _getFieldPrice(),
+        Database.getFieldAverageRating(widget.fieldId),
+      ]);
+      
+      if (mounted) {
+        setState(() {
+          _cachedPrice = results[0];
+          _cachedRating = results[1];
+        });
+      }
+    } catch (e) {
+      debugPrint('Lỗi load data: $e');
+    } finally {
+      _isLoadingData = false;
+    }
   }
 
   Future<void> _fetchBookedSlots(DateTime date) async {
@@ -102,6 +138,9 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
   }
 
   Future<double> _getFieldPrice() async {
+    // Nếu đã có cache thì return luôn
+    if (_cachedPrice != null) return _cachedPrice!;
+    
     try {
       final pricesRef = FirebaseFirestore.instance.collection('prices');
       final fieldRef = FirebaseFirestore.instance
@@ -200,42 +239,39 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                   ),
                   const SizedBox(height: 4),
 
-                  FutureBuilder<double>(
-                    future: Database.getFieldAverageRating(widget.fieldId),
-                    builder: (context, snapshot) {
-                      final rating = snapshot.data ?? 0.0;
-                      return Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          RatingBarIndicator(
-                            rating: rating,
-                            itemBuilder: (context, _) =>
-                                const Icon(Icons.star, color: Colors.amber),
-                            itemSize: 16,
-                            itemCount: 5,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            rating > 0 ? rating.toStringAsFixed(1) : "Chưa có",
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                  // Hiển thị rating từ cache
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      RatingBarIndicator(
+                        rating: _cachedRating ?? 0.0,
+                        itemBuilder: (context, _) =>
+                            const Icon(Icons.star, color: Colors.amber),
+                        itemSize: 16,
+                        itemCount: 5,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        (_cachedRating ?? 0) > 0
+                            ? _cachedRating!.toStringAsFixed(1)
+                            : "Chưa có",
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if ((_cachedRating ?? 0) > 0)
+                        const Padding(
+                          padding: EdgeInsets.only(left: 4),
+                          child: Text(
+                            "• Đã có đánh giá",
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey,
                             ),
                           ),
-                          if (rating > 0)
-                            const Padding(
-                              padding: EdgeInsets.only(left: 4),
-                              child: Text(
-                                "• Đã có đánh giá",
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ),
-                        ],
-                      );
-                    },
+                        ),
+                    ],
                   ),
 
                   const SizedBox(height: 4),
@@ -244,20 +280,17 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                     style: const TextStyle(fontSize: 12),
                   ),
                   const SizedBox(height: 4),
-                  FutureBuilder<double>(
-                    future: _getFieldPrice(),
-                    builder: (context, snapshot) {
-                      final price = snapshot.data ?? 0;
-                      return Text(
-                        "Giá: ${NumberFormat('#,###', 'vi_VN').format(price)} VNĐ/giờ",
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.green,
-                        ),
-                      );
-                    },
+                  
+                  // Hiển thị giá từ cache
+                  Text(
+                    "Giá: ${_cachedPrice != null ? NumberFormat('#,###', 'vi_VN').format(_cachedPrice) : '...'} VNĐ/giờ",
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.green,
+                    ),
                   ),
+                  
                   const SizedBox(height: 6),
                   Row(
                     children: [
@@ -266,15 +299,23 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                           onPressed: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(
-                                builder: (_) => ChatScreen(
+                              PageRouteBuilder(
+                                pageBuilder: (context, animation, secondaryAnimation) => ChatScreen(
                                   fieldId: widget.fieldId,
                                   fieldName: name,
                                 ),
+                                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                  return FadeTransition(
+                                    opacity: animation,
+                                    child: child,
+                                  );
+                                },
+                                transitionDuration: const Duration(milliseconds: 300),
+                                maintainState: true,
+                                opaque: false,
                               ),
                             );
                           },
-
                           label: const Text("Chat"),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.blue,
@@ -289,17 +330,23 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
                           onPressed: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(
-                                builder: (_) => ReviewScreen(
+                              PageRouteBuilder(
+                                pageBuilder: (context, animation, secondaryAnimation) => ReviewScreen(
                                   fieldId: widget.fieldId,
                                   bookingId: '',
                                   fieldName: name,
                                   fieldImage: data['image'] ?? '',
                                 ),
+                                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                  return FadeTransition(
+                                    opacity: animation,
+                                    child: child,
+                                  );
+                                },
                               ),
                             );
                           },
-
+                          
                           label: const Text("Xem đánh giá"),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.orange,

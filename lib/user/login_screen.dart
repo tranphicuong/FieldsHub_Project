@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fieldshub/Database/database.dart';
 import 'package:fieldshub/owner/main_screen.dart';
 import 'package:fieldshub/user/forgot_password_screen.dart';
@@ -153,13 +154,45 @@ class _LoginScreenState extends State<LoginScreen> {
                   _showSnackBar("Không tìm thấy người dùng hoặc vai trò");
                   return;
                 }
+                final String role = result['role'] ?? '';
+                final String uid = result['uid'];
+                if (role == 'owner') {
+                  final ownerDocSnap = await FirebaseFirestore.instance
+                      .collection('owner_documents')
+                      .where(
+                        'user_id',
+                        isEqualTo: FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(uid),
+                      )
+                      .limit(1)
+                      .get();
 
-                if (result['role'] == 'user') {
+                  if (ownerDocSnap.docs.isEmpty) {
+                    _showSnackBar(
+                      "Không tìm thấy hồ sơ chủ sân. Vui lòng liên hệ Admin.",
+                    );
+                    return;
+                  }
+
+                  final ownerData = ownerDocSnap.docs.first.data();
+                  final DocumentReference? statusRef =
+                      ownerData['status_id'] as DocumentReference?;
+
+                  if (statusRef?.id != '5') {
+                    _showSnackBar(
+                      "Tài khoản chủ sân của bạn chưa được duyệt!Vui lòng chờ Admin phê duyệt.",
+                    );
+                    return;
+                  }
+                }
+
+                if (role == 'user') {
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(builder: (_) => const MainUserScreen()),
                   );
-                } else if (result['role'] == 'owner') {
+                } else if (role == 'owner') {
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(builder: (_) => const MainScreen()),

@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+
 class BookingHistoryScreen extends StatefulWidget {
   const BookingHistoryScreen({Key? key}) : super(key: key);
 
@@ -40,95 +41,105 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
       body: Column(
         children: [
           Container(
-  color: Colors.blue[100],
-  child: SingleChildScrollView(
-    scrollDirection: Axis.horizontal,
-    child: Row(
-      children: statusTabs.map((status) {
-        final selected = selectedStatus == status;
-        return GestureDetector(
-          onTap: () => setState(() => selectedStatus = status),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: selected ? Colors.blue[800]! : Colors.transparent,
-                  width: 3,
-                ),
-              ),
-            ),
-            child: Text(
-              status,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                color: selected ? Colors.blue[800] : Colors.black54,
+            width: double.infinity,
+            decoration: BoxDecoration(color: Colors.blue[100]),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: statusTabs.map((status) {
+                  final selected = selectedStatus == status;
+                  return GestureDetector(
+                    onTap: () => setState(() => selectedStatus = status),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: selected
+                                ? Colors.blue[800]!
+                                : Colors.transparent,
+                            width: 3,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        status,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: selected ? Colors.blue[800] : Colors.black54,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
             ),
           ),
-        );
-      }).toList(),
-    ),
-  ),
-),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
-                  .collection('bookings')
-                  .where(
-                    'user_id',
-                    isEqualTo: FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(currentUser!.uid),
-                  )
+                  .collection('pending_payments')
+                  .where('user_id', isEqualTo: currentUser!.uid)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
-                  return Center(
-                    child: Text("Lỗi tải lịch sử đặt sân: ${snapshot.error}"),
-                  );
+                  return Center(child: Text("Lỗi: ${snapshot.error}"));
                 }
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                   return const Center(child: Text("Chưa có lịch sử đặt sân"));
                 }
-                final docs = snapshot.data!.docs;
-                final bookings = docs.map((d) => d).where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  if (selectedStatus == "Tất cả") return true;
-                  return (data['status'] ?? '') == selectedStatus;
-                }).toList();
+
+                var bookings = snapshot.data!.docs;
+
+                // Lọc theo tab
+                if (selectedStatus != "Tất cả") {
+                  bookings = bookings.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final status = data['status'] ?? 'Chờ xác nhận';
+                    return status == selectedStatus;
+                  }).toList();
+                }
+
+                // Sắp xếp mới nhất lên đầu
                 bookings.sort((a, b) {
-                  final ad = (a.data() as Map<String, dynamic>)['created_at'];
-                  final bd = (b.data() as Map<String, dynamic>)['created_at'];
-                  if (ad is Timestamp && bd is Timestamp) {
-                    return bd.compareTo(ad);
-                  }
-                  return 0;
+                  final Timestamp? timeA =
+                      (a.data() as Map)['created_at'] as Timestamp?;
+                  final Timestamp? timeB =
+                      (b.data() as Map)['created_at'] as Timestamp?;
+                  if (timeA == null || timeB == null) return 0;
+                  return timeB.compareTo(timeA);
                 });
+
                 if (bookings.isEmpty) {
                   return const Center(
                     child: Text("Không có đặt sân nào trong mục này"),
                   );
                 }
+
                 return ListView.builder(
                   padding: const EdgeInsets.all(10),
                   itemCount: bookings.length,
                   itemBuilder: (context, index) {
                     final bookingDoc = bookings[index];
+                    final data = bookingDoc.data() as Map<String, dynamic>;
+                    data['id'] = bookingDoc.id; // để truyền vào card
                     return FutureBuilder<Widget>(
-                      future: _buildBookingCardFuture(
-                        bookingDoc.data() as Map<String, dynamic>,
-                        bookingDoc.id,
-                      ),
+                      future: _buildBookingCardFuture(data, bookingDoc.id),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState ==
                             ConnectionState.waiting) {
                           return const Card(
-                            child: ListTile(title: Text('Đang tải...')),
+                            child: ListTile(
+                              leading: CircularProgressIndicator(),
+                              title: Text("Đang tải..."),
+                            ),
                           );
                         }
                         return snapshot.data ?? const SizedBox.shrink();
@@ -221,6 +232,8 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
         ? (totalAmount - depositAmount).toInt()
         : 0;
 
+    final qrUrl = booking['qr_url'] as String? ?? '';
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
       elevation: 4,
@@ -287,27 +300,179 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  "Mã đặt: $bookingCode",
-                  style: const TextStyle(fontSize: 13),
-                ),
-                Text("Địa chỉ: $address", style: const TextStyle(fontSize: 13)),
-                Text(
-                  paymentMethod == "Cọc"
-                      ? "Số tiền còn lại: ${NumberFormat('#,###', 'vi_VN').format(remainingAmount)} VNĐ"
-                      : "Đã thanh toán toàn bộ",
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: paymentMethod == "Cọc"
-                        ? Colors.orange
-                        : Colors.green,
-                    fontWeight: FontWeight.w600,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Mã đặt: $bookingCode",
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          Text("Địa chỉ: $address", style: const TextStyle(fontSize: 13)),
+                          Text(
+                            paymentMethod == "Cọc"
+                                ? "Số tiền còn lại: ${NumberFormat('#,###', 'vi_VN').format(remainingAmount)} VNĐ"
+                                : "Đã thanh toán toàn bộ",
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: paymentMethod == "Cọc"
+                                  ? Colors.orange
+                                  : Colors.green,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Hiển thị mã QR bên phải cho trạng thái "Chờ xác nhận"
+                    if (status == "Chờ xác nhận" && qrUrl.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.only(left: 8),
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: Colors.green[300]!,
+                            width: 2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.green.withOpacity(0.1),
+                              blurRadius: 6,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.network(
+                            qrUrl,
+                            width: 100,
+                            height: 100,
+                            fit: BoxFit.contain,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return SizedBox(
+                                width: 100,
+                                height: 100,
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    value: loadingProgress.expectedTotalBytes != null
+                                        ? loadingProgress.cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
+                                  ),
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                width: 100,
+                                height: 100,
+                                color: Colors.grey[200],
+                                child: Icon(
+                                  Icons.qr_code_2,
+                                  size: 40,
+                                  color: Colors.grey[400],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
 
                 const SizedBox(height: 8),
                 Row(
                   children: [
+                    if (status == "Chờ xác nhận") ...[
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.cancel, size: 18),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: () async {
+                            if (!mounted) return;
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Xác nhận'),
+                                content: const Text(
+                                  'Bạn có chắc chắn muốn hủy đặt sân này?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('Không'),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.red,
+                                    ),
+                                    onPressed: () => Navigator.pop(context, true),
+                                    child: const Text('Có'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirm == true && mounted) {
+                              try {
+                                // HỦY ĐƠN ĐANG CHỜ XÁC NHẬN (pending_payments)
+                                await FirebaseFirestore.instance
+                                    .collection('pending_payments')
+                                    .doc(bookingId)
+                                    .update({
+                                      'status': 'Đã hủy',
+                                      'status_id': FirebaseFirestore.instance
+                                          .collection('status')
+                                          .doc('3'),
+                                      'cancelled_at':
+                                          FieldValue.serverTimestamp(),
+                                    });
+
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text("Đã hủy đặt sân thành công"),
+                                      behavior: SnackBarBehavior.floating,
+                                      margin: const EdgeInsets.only(
+                                        bottom: 50,
+                                        left: 20,
+                                        right: 20,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text("Lỗi hủy đặt sân: $e"),
+                                    ),
+                                  );
+                                }
+                              }
+                            }
+                          },
+                          label: const Text("Hủy đặt sân"),
+                        ),
+                      ),
+                    ],
                     if (status == "Đã xác nhận")
                       FutureBuilder<bool>(
                         future: Database.hasUserReviewedBooking(
@@ -374,78 +539,6 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
                           );
                         },
                       ),
-                    if (status == "Chờ xác nhận") ...[
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.cancel, size: 18),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        onPressed: () async {
-                          if (!mounted) return;
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Xác nhận'),
-                              content: const Text(
-                                'Bạn có chắc chắn muốn hủy đặt sân này?',
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () =>
-                                      Navigator.pop(context, false),
-                                  child: const Text('Không'),
-                                ),
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red,
-                                  ),
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: const Text('Có'),
-                                ),
-                              ],
-                            ),
-                          );
-                          if (confirm == true && mounted) {
-                            try {
-                              await Database.updateBookingStatus(
-                                bookingId: bookingId,
-                                 statusKey: 'cancelled');
-                             
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text("Đã hủy đặt sân thành công"),
-                                    behavior: SnackBarBehavior.floating,
-                                    margin: const EdgeInsets.only(
-                                      bottom: 50,
-                                      left: 20,
-                                      right: 20,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text("Lỗi hủy đặt sân: $e"),
-                                  ),
-                                );
-                              }
-                            }
-                          }
-                        },
-                        label: const Text("Hủy đặt sân"),
-                      ),
-                    ],
                   ],
                 ),
               ],
