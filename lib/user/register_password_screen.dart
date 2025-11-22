@@ -30,7 +30,8 @@ class _RegisterPasswordScreen extends State<RegisterPasswordScreen> {
 
   String? _otpSent;
   DateTime? _otpExpire;
-
+  bool _obscurePassword = true;
+  bool _obscureRePassword = true;
   //gui ma otp
 
   Future<void> _sendOtp() async {
@@ -233,14 +234,40 @@ class _RegisterPasswordScreen extends State<RegisterPasswordScreen> {
                       controller: _passwordController,
                       label: "Password",
                       icon: Icons.lock_outline,
-                      obscure: true,
+                      obscure: _obscurePassword,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                          color: Colors.indigo,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                      ),
                     ),
                     const SizedBox(height: 10),
                     _textfield(
                       controller: _repasswordController,
                       label: "Re-Password",
                       icon: Icons.lock_outline,
-                      obscure: true,
+                      obscure: _obscureRePassword,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                          color: Colors.indigo,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscureRePassword = !_obscureRePassword;
+                          });
+                        },
+                      ),
                     ),
                     const SizedBox(height: 0.5),
                     Align(
@@ -313,6 +340,7 @@ class _RegisterPasswordScreen extends State<RegisterPasswordScreen> {
     required IconData icon,
     String? hint,
     bool obscure = false,
+    Widget? suffixIcon,
   }) {
     return TextField(
       controller: controller,
@@ -324,6 +352,7 @@ class _RegisterPasswordScreen extends State<RegisterPasswordScreen> {
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        suffixIcon: suffixIcon,
       ),
     );
   }

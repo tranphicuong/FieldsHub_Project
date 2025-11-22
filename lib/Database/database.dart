@@ -338,7 +338,7 @@ class Database {
   }
 
   // notifications
-  
+
   static Future<void> sendNotification({
     required String userId,
     required String title,
@@ -719,7 +719,27 @@ class Database {
     final convRef = _firestore.collection('conversations').doc(convId);
 
     final doc = await convRef.get();
-    if (doc.exists) return convId;
+    if (doc.exists) return convId; // Đã tồn tại, trả về
+
+    // Nếu chưa tồn tại, trả về convId mà không tạo document
+    return convId;
+  }
+
+  // Hàm mới: Tạo conversation khi gửi tin nhắn đầu tiên
+  static Future<void> _createConversationIfNotExists({
+    required String convId,
+    required String currentUserId,
+    required String fieldId,
+    required String fieldName,
+  }) async {
+    final convRef = _firestore.collection('conversations').doc(convId);
+    final doc = await convRef.get();
+
+    if (doc.exists) return; // Đã tồn tại, không cần tạo
+
+    // Tạo conversation khi gửi tin nhắn đầu tiên
+    final ownerId = await getFieldOwnerId(fieldId);
+    if (ownerId == null) throw Exception("Không tìm thấy chủ sân");
 
     final ownerDoc = await _firestore.collection('users').doc(ownerId).get();
     final ownerData = ownerDoc.data() ?? {};
@@ -728,7 +748,7 @@ class Database {
 
     await convRef.set({
       'users': [currentUserId, ownerId],
-      'fieldId': fieldId,
+      'fieldId': _firestore.collection('fields').doc(fieldId),
       'fieldName': fieldName,
       'ownerName': ownerName,
       'ownerAvatar': ownerAvatar,
@@ -739,11 +759,9 @@ class Database {
       'unreadCount': {currentUserId: 0, ownerId: 0},
       'deletedBy': {currentUserId: false, ownerId: false},
     });
-
-    return convId;
   }
 
-  //gui tin nhan
+  // Sửa hàm sendMessage - tạo conversation khi gửi tin nhắn đầu tiên
   static Future<void> sendMessage({
     required String convId,
     required String text,
@@ -756,7 +774,9 @@ class Database {
 
     final doc = await convRef.get();
     if (!doc.exists) {
-      await createOrGetConversation(
+      // Tạo conversation nếu chưa tồn tại
+      await _createConversationIfNotExists(
+        convId: convId,
         currentUserId: senderId,
         fieldId: fieldId,
         fieldName: fieldName,
@@ -773,6 +793,7 @@ class Database {
       'createdAt': FieldValue.serverTimestamp(),
       'seenBy': {senderId: FieldValue.serverTimestamp(), receiverId: null},
       'deletedBy': {senderId: false, receiverId: false},
+      'field_id': _firestore.collection('fields').doc(fieldId),
     });
 
     batch.update(convRef, {
@@ -781,6 +802,8 @@ class Database {
       'lastSender': senderId,
       'unreadCount.$receiverId': FieldValue.increment(1),
       'unreadCount.$senderId': 0,
+      'deletedBy.$senderId': false,
+      'deletedBy.$receiverId': false,
     });
 
     await batch.commit();
@@ -831,13 +854,69 @@ class Database {
   }
 
   //xoa cuoc tro chuyen
-  static Future<void> deleteConversation({
-    required String convId,
-    required String userId,
-  }) async {
+static Future<void> deleteConversation({
+  required String convId,
+  required String userId,
+}) async {
+  try {
     final convRef = _firestore.collection('conversations').doc(convId);
-    await convRef.update({'deletedBy.$userId': true, 'unreadCount.$userId': 0});
+    final convSnap = await convRef.get();
+    
+    if (!convSnap.exists) return;
+    
+    final convData = convSnap.data() as Map<String, dynamic>;
+    final deletedBy = Map<String, dynamic>.from(convData['deletedBy'] ?? {});
+    final users = List<String>.from(convData['users'] ?? []);
+    
+    // Đánh dấu user hiện tại đã xóa
+    deletedBy[userId] = true;
+    
+    // Kiểm tra xem tất cả users đã xóa chưa
+    bool allUsersDeleted = users.every((uid) => deletedBy[uid] == true);
+    
+    if (allUsersDeleted) {
+
+      
+      // Xóa tất cả messages trong conversation
+      final messagesSnap = await convRef.collection('messages').get();
+      final batch = _firestore.batch();
+      
+      for (final doc in messagesSnap.docs) {
+        batch.delete(doc.reference);
+      }
+      
+      // Xóa conversation document
+      batch.delete(convRef);
+      
+      await batch.commit();
+      
+    } else {
+      
+      
+      await convRef.update({
+        'deletedBy.$userId': true,
+        'unreadCount.$userId': 0,
+      });
+      
+      
+      final messagesSnap = await convRef
+          .collection('messages')
+          .where('deletedBy.$userId', isEqualTo: false)
+          .get();
+      
+      if (messagesSnap.docs.isNotEmpty) {
+        final batch = _firestore.batch();
+        for (final doc in messagesSnap.docs) {
+          batch.update(doc.reference, {'deletedBy.$userId': true});
+        }
+        await batch.commit();
+      }
+    }
+  } catch (e) {
+    developer.log('Lỗi xóa conversation: $e');
+    rethrow;
   }
+}
 
   //kiem tra xoa
   static bool isConversationDeleted(Map<String, dynamic> conv, String userId) {
@@ -868,24 +947,42 @@ class Database {
     required String convId,
     required String userId,
   }) async {
-    final convRef = _firestore.collection('conversations').doc(convId);
-    final batch = _firestore.batch();
+    try {
+      final convRef = _firestore.collection('conversations').doc(convId);
 
-    batch.update(convRef, {'unreadCount.$userId': 0});
-
-    final messagesSnap = await convRef
-        .collection('messages')
-        .where('senderId', isNotEqualTo: userId)
-        .where('seenBy.$userId', isEqualTo: null)
-        .get();
-
-    for (final doc in messagesSnap.docs) {
-      batch.update(doc.reference, {
-        'seenBy.$userId': FieldValue.serverTimestamp(),
+      // Reset số tin chưa đọc
+      await convRef.update({'unreadCount.$userId': 0}).catchError((e) {
+        developer.log('Lỗi update unreadCount: $e');
       });
-    }
 
-    await batch.commit();
+      // Cập nhật seenBy cho tất cả tin nhắn chưa được đọc
+      QuerySnapshot messagesSnap;
+      try {
+        messagesSnap = await convRef
+            .collection('messages')
+            .where('senderId', isNotEqualTo: userId)
+            .where('seenBy.$userId', isEqualTo: null)
+            .get();
+      } catch (e) {
+        developer.log('Lỗi lấy messages: $e');
+        return; // Thoát nếu không lấy được messages
+      }
+
+      if (messagesSnap.docs.isEmpty) return;
+
+      // Dùng batch thay vì transaction (an toàn hơn)
+      final batch = _firestore.batch();
+      for (final doc in messagesSnap.docs) {
+        batch.update(doc.reference, {
+          'seenBy.$userId': FieldValue.serverTimestamp(),
+        });
+      }
+
+      await batch.commit();
+    } catch (e) {
+      developer.log('markConversationAsRead error: $e');
+      // Không throw exception để không làm gián đoạn quá trình
+    }
   }
 
   String generateVietQR({
@@ -955,5 +1052,33 @@ class Database {
       }
     }
     return crc.toRadixString(16).toUpperCase().padLeft(4, '0');
+  }
+  
+  
+  // lay ten va anh nguoi dung khac
+  static Future<Map<String, String>> getOtherUserInfo(String uid) async {
+    
+    if (uid.isEmpty || uid == 'null' || uid == 'undefined') {
+      return {'name': 'Khách hàng', 'avatar': ''};
+    }
+
+    try {
+      final doc = await _firestore.collection('users').doc(uid).get();
+      if (!doc.exists) {
+        return {'name': 'Khách hàng', 'avatar': ''};
+      }
+
+      final data = doc.data()!;
+      final name = data['name']?.toString();
+      final avatar = (data['avatar'] as String?)?.trim();
+
+      return {
+        'name': name?.isNotEmpty == true ? name! : 'Khách hàng',
+        'avatar': avatar?.isNotEmpty == true ? avatar! : '',
+      };
+    } catch (e) {
+      developer.log('getOtherUserInfo error (uid: $uid): $e');
+      return {'name': 'Khách hàng', 'avatar': ''};
+    }
   }
 }

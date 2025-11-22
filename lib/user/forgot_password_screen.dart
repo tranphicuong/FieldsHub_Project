@@ -17,6 +17,9 @@ class _ForgotPasswordState extends State<ForgotPassword> {
   final TextEditingController _newpasswordController = TextEditingController();
   final TextEditingController _repasswordController = TextEditingController();
 
+  bool _obscurePassword = true;
+  bool _obscureRePassword = true;
+
   String? _otpSent;
   DateTime? _otpExpire;
 
@@ -215,14 +218,36 @@ class _ForgotPasswordState extends State<ForgotPassword> {
                       controller: _newpasswordController,
                       label: "New Password",
                       icon: Icons.lock_outline,
-                      obscure: true,
+                      obscure: _obscurePassword,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                          color: Colors.indigo,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                      ),
                     ),
                     const SizedBox(height: 10),
                     _textfield(
                       controller: _repasswordController,
                       label: "Re-Password",
                       icon: Icons.lock_outline_sharp,
-                      obscure: true,
+                      obscure: _obscureRePassword,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureRePassword ? Icons.visibility_off : Icons.visibility,
+                          color: Colors.indigo,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscureRePassword = !_obscureRePassword;
+                          });
+                        },
+                      ),
                     ),
                     const SizedBox(height: 10),
                     SizedBox(
@@ -272,6 +297,7 @@ class _ForgotPasswordState extends State<ForgotPassword> {
     required IconData icon,
     String? hint,
     bool obscure = false,
+    Widget? suffixIcon,
   }) {
     return TextField(
       controller: controller,
@@ -283,6 +309,7 @@ class _ForgotPasswordState extends State<ForgotPassword> {
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        suffixIcon: suffixIcon,
       ),
     );
   }

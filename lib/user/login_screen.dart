@@ -19,6 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final _usernameController = TextEditingController();
   final _phoneController = TextEditingController();
+  bool _obscurePassword = true;
 
   void _showSnackBar(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -117,7 +118,18 @@ class _LoginScreenState extends State<LoginScreen> {
           controller: _passwordController,
           label: "Password",
           icon: Icons.lock_outlined,
-          obscure: true,
+          obscure: _obscurePassword,
+          suffixIcon: IconButton(
+            icon: Icon(
+              _obscurePassword ? Icons.visibility_off : Icons.visibility,
+              color: Colors.indigo,
+            ),
+            onPressed: () {
+              setState(() {
+                _obscurePassword = !_obscurePassword;
+              });
+            },
+          ),
         ),
         const SizedBox(height: 10),
         Align(
@@ -138,7 +150,10 @@ class _LoginScreenState extends State<LoginScreen> {
           width: double.infinity,
           child: ElevatedButton(
             onPressed: () async {
-              final email = _emailController.text.trim();
+              String email = _emailController.text.trim();
+              if (!email.contains('@')) {
+                email = email + '@gmail.com';
+              }
               final password = _passwordController.text.trim();
               if (email.isEmpty || password.isEmpty) {
                 _showSnackBar("Vui lòng nhập đầy đủ!");
@@ -327,6 +342,7 @@ class _LoginScreenState extends State<LoginScreen> {
     required IconData icon,
     String? hint,
     bool obscure = false,
+    Widget? suffixIcon,
   }) {
     return TextField(
       controller: controller,
@@ -338,6 +354,7 @@ class _LoginScreenState extends State<LoginScreen> {
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        suffixIcon: suffixIcon,
       ),
     );
   }
