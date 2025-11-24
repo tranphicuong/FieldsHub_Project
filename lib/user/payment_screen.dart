@@ -27,7 +27,7 @@ class PaymentPage extends StatefulWidget {
     this.startTime,
     this.endTime,
     this.fieldName,
-    this.address,
+    this.address, required double totalAmount,
   });
 
   @override

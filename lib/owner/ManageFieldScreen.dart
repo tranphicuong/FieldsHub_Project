@@ -1,16 +1,14 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'FieldListScreen.dart';
-import 'dart:typed_data';
-import 'package:flutter/foundation.dart'; // để dùng kIsWeb
+import 'package:fieldshub/services/cloudinary_service.dart';
 
 class ManageFieldScreen extends StatefulWidget {
-  final Map<String, dynamic>? fieldData; // Dữ liệu sân nếu đang sửa
-
+  final Map<String, dynamic>? fieldData;
   const ManageFieldScreen({super.key, this.fieldData});
 
   @override
@@ -26,268 +24,234 @@ class _ManageFieldScreenState extends State<ManageFieldScreen> {
   final TextEditingController noteController = TextEditingController();
 
   final ImagePicker picker = ImagePicker();
-  XFile? _selectedImageFile;
-  String? selectedCategory;
-  String? fieldId; // ID của sân để liên kết với giá
-  String? areaId = "/areas/m7MXj6UwRGwOxt4ilk0A"; // Mặc định, sẽ cập nhật nếu cần
+  XFile? _pickedImageFile;          // Dùng XFile → chạy được cả Web
+  bool _isUploadingImage = false;   // Loading khi upload
 
-  bool _isLoading = false; // Trạng thái đang lưu
+  String? selectedCategory;
+  String? fieldId;
+  String areaId = "/areas/m7MXj6UwRGwOxt4ilk0A";
+
+  bool _isLoading = false;
   late Future<List<String>> _sportsCategories;
-  late Future<DocumentReference?> _fieldPriceRef; // Tham chiếu giá
 
   @override
   void initState() {
     super.initState();
     _sportsCategories = _fetchSportsCategories();
-    fieldId = widget.fieldData?['id'] ?? ''; // Lấy ID sân nếu có
-    _fieldPriceRef = _fetchFieldPriceRef(fieldId); // Lấy tham chiếu giá
+
     if (widget.fieldData != null) {
-      nameController.text = widget.fieldData!['name'] ?? '';
-      if (widget.fieldData!['area_id'] is DocumentReference) {
-  areaId = (widget.fieldData!['area_id'] as DocumentReference).path;
-  // Tự động lấy địa chỉ từ areas
-  FirebaseFirestore.instance
-      .doc(areaId!)
-      .get()
-      .then((areaDoc) {
-        if (areaDoc.exists) {
-          final areaData = areaDoc.data() as Map<String, dynamic>;
-          setState(() {
-            addressController.text = areaData['address'] ?? '';
-          });
-        }
-      });
-}
-      // Lấy giá từ tham chiếu nếu có
-      _loadPriceFromRef(widget.fieldData!['price'] as DocumentReference?);
-      phoneController.text = widget.fieldData!['soDienThoai'] ?? '';
-      depositController.text = widget.fieldData!['deposit']?.toString() ?? '';
-      noteController.text = widget.fieldData!['note'] ?? '';
-      selectedCategory = widget.fieldData!['sport'];
-    }
-  }
+      final data = widget.fieldData!;
+      fieldId = data['id']?.toString();
+      nameController.text = data['name'] ?? '';
+      phoneController.text = data['soDienThoai'] ?? '';
+      depositController.text = data['deposit']?.toString() ?? '';
+      noteController.text = data['note'] ?? '';
+      selectedCategory = data['sport'];
 
-  Future<List<String>> _fetchSportsCategories() async {
-    final querySnapshot = await FirebaseFirestore.instance.collection('sports').get();
-    return querySnapshot.docs.map((doc) => doc.id).toList();
-  }
+      // Load địa chỉ từ area_id
+      if (data['area_id'] is DocumentReference) {
+        areaId = (data['area_id'] as DocumentReference).path;
+        FirebaseFirestore.instance.doc(areaId).get().then((doc) {
+          if (doc.exists && mounted) {
+            setState(() => addressController.text = doc['address'] ?? '');
+          }
+        });
+      }
 
-  Future<DocumentReference?> _fetchFieldPriceRef(String? fieldId) async {
-    if (fieldId == null || fieldId.isEmpty) return null;
-    final querySnapshot = await FirebaseFirestore.instance
-        .collection('prices')
-        .where('field_id', isEqualTo: FirebaseFirestore.instance.doc('fields/$fieldId'))
-        .limit(1)
-        .get();
-    return querySnapshot.docs.isNotEmpty ? querySnapshot.docs.first.reference : null;
-  }
-
-  void _loadPriceFromRef(DocumentReference? priceRef) async {
-    if (priceRef == null) return;
-    final priceDoc = await priceRef.get();
-    if (priceDoc.exists) {
-      final priceData = priceDoc.data() as Map<String, dynamic>?;
-      if (priceData != null) {
-        final price = priceData['price_amount']?.toString() ?? '';
-        if (priceController.text.isEmpty) {
-          setState(() {
-            priceController.text = price;
-          });
-        }
+      // Load giá từ prices (dùng fieldId)
+      if (fieldId != null) {
+        FirebaseFirestore.instance.collection('prices').doc(fieldId).get().then((doc) {
+          if (doc.exists && mounted) {
+            final price = doc['price_amount']?.toString() ?? '';
+            if (priceController.text.isEmpty) setState(() => priceController.text = price);
+          }
+        });
       }
     }
   }
 
+  Future<List<String>> _fetchSportsCategories() async {
+    final snap = await FirebaseFirestore.instance.collection('sports').get();
+    return snap.docs.map((e) => e.id).toList();
+  }
+
+  // ===================== CHỌN ẢNH =====================
   void _showImagePickerOptions() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (BuildContext context) {
-        return SafeArea(
-          child: Wrap(
-            children: [
-              const ListTile(
-                title: Center(
-                  child: Text(
-                    'Chọn hình sân',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text("Chọn ảnh sân", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Colors.blue),
+              title: const Text("Thư viện ảnh"),
+              onTap: () => _pickImage(ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Colors.blue),
+              title: const Text("Chụp ảnh"),
+              onTap: () => _pickImage(ImageSource.camera),
+            ),
+            if (_pickedImageFile != null)
               ListTile(
-                title: const Center(
-                  child: Text('Chọn ảnh từ thư viện',
-                      style: TextStyle(color: Colors.blue)),
-                ),
-                onTap: () async {
-                  final picked = await picker.pickImage(source: ImageSource.gallery);
-                  if (picked != null) {
-                    setState(() => _selectedImageFile = picked);
-                  }
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text("Xóa ảnh", style: TextStyle(color: Colors.red)),
+                onTap: () {
+                  setState(() => _pickedImageFile = null);
                   Navigator.pop(context);
                 },
               ),
-              ListTile(
-                title: const Center(
-                    child: Text('Chụp ảnh mới',
-                        style: TextStyle(color: Colors.blue))),
-                onTap: () async {
-                  final picked = await picker.pickImage(source: ImageSource.camera);
-                  if (picked != null) {
-                    setState(() => _selectedImageFile = picked);
-                  }
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                title: const Center(
-                    child: Text('Hủy', style: TextStyle(color: Colors.red))),
-                onTap: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-        );
-      },
+            ListTile(
+              leading: const Icon(Icons.close),
+              title: const Text("Hủy"),
+              onTap: () => Navigator.pop(context),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Future<void> _saveField() async {
-    if (nameController.text.isEmpty ||
-        addressController.text.isEmpty ||
-        priceController.text.isEmpty ||
-        phoneController.text.isEmpty ||
-        selectedCategory == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("⚠️ Vui lòng nhập đủ thông tin bắt buộc")),
+  Future<void> _pickImage(ImageSource source) async {
+    Navigator.pop(context);
+    final XFile? picked = await picker.pickImage(
+      source: source,
+      imageQuality: 85,
+      maxWidth: 1200,
+    );
+    if (picked != null) {
+      setState(() => _pickedImageFile = picked);
+    }
+  }
+
+  // ===================== UPLOAD ẢNH =====================
+  // UPLOAD ẢNH QUA CLOUDINARY (chỉ gọi service của bạn)
+  Future<String?> _uploadImageToCloudinary(String fieldId) async {
+    if (_pickedImageFile == null) return null;
+
+    setState(() => _isUploadingImage = true);
+
+    try {
+      // Cloudinary chấp nhận cả XFile.path trên Web và Mobile
+      final file = File(_pickedImageFile!.path);
+      final url = await CloudinaryService.uploadFieldImage(
+        imageFile: file,
+        fieldId: fieldId,
+        context: context,
       );
+      return url;
+    } catch (e) {
+      debugPrint("Lỗi upload Cloudinary: $e");
+      return null;
+    } finally {
+      if (mounted) setState(() => _isUploadingImage = false);
+    }
+  }
+
+  // ===================== LƯU SÂN =====================
+  Future<void> _saveField() async {
+    if (nameController.text.trim().isEmpty ||
+        addressController.text.trim().isEmpty ||
+        priceController.text.trim().isEmpty ||
+        phoneController.text.trim().isEmpty ||
+        selectedCategory == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Vui lòng nhập đủ thông tin bắt buộc")));
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("❌ Vui lòng đăng nhập")),
-        );
-        return;
-      }
-
-      String? imageUrl = widget.fieldData?['image'];
-
-      if (_selectedImageFile != null) {
-        final fileName = 'fields/${DateTime.now().millisecondsSinceEpoch}.jpg';
-        final storageRef = FirebaseStorage.instance.ref().child(fileName);
-
-        UploadTask uploadTask;
-        if (kIsWeb) {
-          final bytes = await _selectedImageFile!.readAsBytes();
-          uploadTask = storageRef.putData(bytes);
-        } else {
-          uploadTask = storageRef.putFile(File(_selectedImageFile!.path));
-        }
-
-        final snapshot = await uploadTask.whenComplete(() {});
-        imageUrl = await snapshot.ref.getDownloadURL();
-      }
+      final user = FirebaseAuth.instance.currentUser!;
       final ownerRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-      final price = int.tryParse(priceController.text.trim()) ?? 0;
-      final userId = user.uid; // Lấy UID của người dùng
+      final fieldsRef = FirebaseFirestore.instance.collection("fields");
+      final price = int.tryParse(priceController.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+
+      late DocumentReference fieldRef;
+      String currentFieldId;
+
+      // Bước 1: Tạo ID trước để dùng cho upload ảnh
+      if (widget.fieldData == null) {
+        fieldRef = fieldsRef.doc(); // Tạo ID ngay
+        currentFieldId = fieldRef.id;
+      } else {
+        currentFieldId = widget.fieldData!['id'];
+        fieldRef = fieldsRef.doc(currentFieldId);
+      }
+
+      // Bước 2: Upload ảnh nếu có
+      String? imageUrl;
+      if (_pickedImageFile != null) {
+        imageUrl = await _uploadImageToCloudinary(currentFieldId);
+        if (imageUrl == null) {
+          setState(() => _isLoading = false);
+          return;
+        }
+      }
+
+      // Bước 3: Dữ liệu sân
       final fieldData = {
-        "area_id": FirebaseFirestore.instance.doc(areaId!), // ✅ đúng, tạo DocumentReference
-        "open_time": Timestamp.fromDate(
-    DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 0, 0)), // 00:00
-"close_time": Timestamp.fromDate(
-    DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 23, 59)), // 23:59
+        "area_id": FirebaseFirestore.instance.doc(areaId),
+        "open_time": Timestamp.fromDate(DateTime.now().copyWith(hour: 0, minute: 0)),
+        "close_time": Timestamp.fromDate(DateTime.now().copyWith(hour: 23, minute: 59)),
         "description": noteController.text.trim(),
         "name": nameController.text.trim(),
         "phone": phoneController.text.trim(),
         "sport": selectedCategory!,
         "sport_id": "sports/$selectedCategory",
-        "deposit_percent": double.tryParse(depositController.text.trim()) ?? 0,
-        "image": imageUrl ?? '',
-        "createdAt": FieldValue.serverTimestamp(),
+        "deposit_percent": double.tryParse(depositController.text) ?? 0,
+        "image": imageUrl ?? widget.fieldData?['image'] ?? '',
         "owner_id": ownerRef,
+        if (widget.fieldData == null) "createdAt": FieldValue.serverTimestamp(),
       };
 
-      final fieldsRef = FirebaseFirestore.instance.collection("fields");
-      late DocumentReference fieldRef;
-
+      // Bước 4: Lưu sân
       if (widget.fieldData == null) {
-        fieldRef = await fieldsRef.add(fieldData); // area_id tạm là mặc định
-        fieldId = fieldRef.id;
+        await fieldRef.set(fieldData);
       } else {
-        await fieldsRef.doc(widget.fieldData!['id']).update(fieldData);
-        fieldId = widget.fieldData!['id'];
+        await fieldRef.update(fieldData);
       }
 
-      // 🔧 Nếu chưa có areaId hoặc đang dùng mặc định -> tạo mới
-      final areasRef = FirebaseFirestore.instance.collection("areas");
-DocumentReference areaDocRef;
+      // Cập nhật area + giá (giữ nguyên logic cũ)
+      if (areaId == "/areas/m7MXj6UwRGwOxt4ilk0A") {
+        final newArea = await FirebaseFirestore.instance.collection('areas').add({
+          "address": addressController.text.trim(),
+          "owner_id": ownerRef,
+          "createdAt": FieldValue.serverTimestamp(),
+        });
+        await fieldRef.update({"area_id": newArea});
+      } else {
+        await FirebaseFirestore.instance.doc(areaId).set({
+          "address": addressController.text.trim(),
+          "updatedAt": FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
 
-if (areaId == null || areaId == "/areas/m7MXj6UwRGwOxt4ilk0A") {
-  // TẠO AREA MỚI
-  areaDocRef = await areasRef.add({
-    "address": addressController.text.trim(),
-    "owner_id": FirebaseFirestore.instance.doc("users/$userId"),
-    "createdAt": FieldValue.serverTimestamp(),
-    "sports": ["/sports/$selectedCategory"],
-  });
-
-  // CẬP NHẬT LẠI field với area_id MỚI
-  await fieldRef.update({
-    "area_id": areaDocRef, 
-  });
-
-  areaId = areaDocRef.path; // Cập nhật biến (nếu cần sau này)
-} else {
-  // CẬP NHẬT AREA CŨ
-  final areaDocId = areaId!.split('/').last;
-  areaDocRef = areasRef.doc(areaDocId);
-  await areaDocRef.set({
-    "address": addressController.text.trim(),
-    "owner_id": FirebaseFirestore.instance.doc("users/$userId"),
-    "updatedAt": FieldValue.serverTimestamp(),
-  }, SetOptions(merge: true));
-}
-
-      // Lưu hoặc cập nhật giá trong "prices" với tham chiếu
-      final priceData = {
-        "field_id": fieldsRef.doc(fieldId), // Tham chiếu đến sân
+      await FirebaseFirestore.instance.collection('prices').doc(currentFieldId).set({
+        "field_id": fieldRef,
         "price_amount": price,
-        "start_time": "00:00", // Lưu 00:00
-        "end_time": "23:59",   // Lưu 23:59
-        "percentage_price_change": 0, // Giá cố định
-      };
+        "start_time": "00:00",
+        "end_time": "23:59",
+        "percentage_price_change": 0,
+      }, SetOptions(merge: true));
 
-      await FirebaseFirestore.instance
-          .collection('prices')
-          .doc(fieldId)
-          .set(priceData, SetOptions(merge: true));
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("✅ Đã lưu sân và cập nhật khu vực thành công")),
-      );
-
-      // Làm mới danh sách sau khi lưu thành công
-      if (mounted) {
-        Navigator.pop(context, true); // Trả về true để báo hiệu cập nhật
-      }
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Đã lưu sân thành công!")));
+      if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      debugPrint("Lỗi lưu sân: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("❌ Lỗi: $e")),
-        );
-      }
+      debugPrint("Lỗi: $e");
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Lỗi: $e")));
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -302,269 +266,114 @@ if (areaId == null || areaId == "/areas/m7MXj6UwRGwOxt4ilk0A") {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          widget.fieldData == null ? "Thêm sân mới" : "Sửa thông tin sân",
-        ),
+        title: Text(widget.fieldData == null ? "Thêm sân mới" : "Sửa thông tin sân"),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(12),
         child: Column(
           children: [
+            // Nút xem danh sách sân
             ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const DanhSachSanScreen()),
-                );
-              },
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DanhSachSanScreen())),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
               ),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    "Danh sách sân đã có",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-                  ),
+                  Text("Danh sách sân đã có", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                   Icon(Icons.arrow_forward_ios, size: 16),
                 ],
               ),
             ),
             const SizedBox(height: 16),
-            FutureBuilder<DocumentReference?>(
-              future: _fieldPriceRef,
-              builder: (context, priceSnapshot) {
-                if (priceSnapshot.connectionState == ConnectionState.waiting) {
-                  return const CircularProgressIndicator();
-                }
-                if (priceSnapshot.hasData && priceSnapshot.data != null) {
-                  return FutureBuilder<DocumentSnapshot>(
-                    future: priceSnapshot.data!.get(),
-                    builder: (context, priceDocSnapshot) {
-                      if (priceDocSnapshot.connectionState == ConnectionState.waiting) {
-                        return const CircularProgressIndicator();
-                      }
-                      if (priceDocSnapshot.hasData && priceDocSnapshot.data!.exists) {
-                        final priceData = priceDocSnapshot.data!.data() as Map<String, dynamic>?;
-                        final price = priceData?['price_amount']?.toString() ?? '';
-                        if (priceController.text.isEmpty) {
-                          priceController.text = price;
-                        }
-                      }
-                      return Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.4),
-                          borderRadius: BorderRadius.circular(12),
+
+            // Form chính (giữ nguyên giao diện cũ của bạn)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  // Danh mục
+                  FutureBuilder<List<String>>(
+                    future: _sportsCategories,
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const CircularProgressIndicator();
+                      return DropdownButtonFormField<String>(
+                        value: selectedCategory,
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                         ),
-                        child: Column(
-                          children: [
-                            FutureBuilder<List<String>>(
-                              future: _sportsCategories,
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState == ConnectionState.waiting) {
-                                  return const CircularProgressIndicator();
-                                }
-                                if (snapshot.hasError) {
-                                  return const Text("Lỗi khi tải danh mục");
-                                }
-                                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                                  return const Text("Không có danh mục");
-                                }
-                                return DropdownButtonFormField<String>(
-                                  value: selectedCategory,
-                                  decoration: InputDecoration(
-                                    filled: true,
-                                    fillColor: Colors.white,
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                  hint: const Text("Chọn danh mục"),
-                                  items: snapshot.data!
-                                      .map((item) => DropdownMenuItem(value: item, child: Text(item)))
-                                      .toList(),
-                                  onChanged: (value) => setState(() => selectedCategory = value),
-                                );
-                              },
-                            ),
-                            _buildTextField("Nhập tên sân", nameController),
-                            _buildTextField("Nhập địa chỉ sân", addressController),
-                            _buildTextField("Nhập giá tiền/giờ", priceController,
-                                keyboardType: TextInputType.number),
-                            _buildTextField("Nhập số điện thoại", phoneController,
-                                keyboardType: TextInputType.phone),
-                            _buildTextField("Nhập mức cọc (%)", depositController,
-                                keyboardType: TextInputType.number),
-                            _buildTextField("Nhập ghi chú sân", noteController),
-                            const SizedBox(height: 10),
-                            GestureDetector(
-                              onTap: _showImagePickerOptions,
-                              child: Column(
-                                children: [
-                                  Container(
-                                    width: 100,
-                                    height: 100,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: Colors.black26),
-                                    ),
-                                    child: _buildImagePreview(),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  const Text("Thêm ảnh"),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            const SizedBox(height: 20),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                ElevatedButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red,
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 30, vertical: 10),
-                                  ),
-                                  child: const Text("HỦY"),
-                                ),
-                                const SizedBox(width: 20),
-                                ElevatedButton(
-                                  onPressed: _isLoading ? null : _saveField,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.green,
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 30, vertical: 10),
-                                  ),
-                                  child: _isLoading
-                                      ? const SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Text("LƯU"),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                        hint: const Text("Chọn danh mục"),
+                        items: snapshot.data!.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                        onChanged: (v) => setState(() => selectedCategory = v),
                       );
                     },
-                  );
-                }
-                return Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Column(
-                    children: [
-                      FutureBuilder<List<String>>(
-                        future: _sportsCategories,
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return const CircularProgressIndicator();
-                          }
-                          if (snapshot.hasError) {
-                            return const Text("Lỗi khi tải danh mục");
-                          }
-                          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                            return const Text("Không có danh mục");
-                          }
-                          return DropdownButtonFormField<String>(
-                            value: selectedCategory,
-                            decoration: InputDecoration(
-                              filled: true,
-                              fillColor: Colors.white,
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            hint: const Text("Chọn danh mục"),
-                            items: snapshot.data!
-                                .map((item) => DropdownMenuItem(value: item, child: Text(item)))
-                                .toList(),
-                            onChanged: (value) => setState(() => selectedCategory = value),
-                          );
-                        },
-                      ),
-                      _buildTextField("Nhập tên sân", nameController),
-                      _buildTextField("Nhập địa chỉ sân", addressController),
-                      _buildTextField("Nhập giá tiền/giờ", priceController,
-                          keyboardType: TextInputType.number),
-                      _buildTextField("Nhập số điện thoại", phoneController,
-                          keyboardType: TextInputType.phone),
-                      _buildTextField("Nhập mức cọc (%)", depositController,
-                          keyboardType: TextInputType.number),
-                      _buildTextField("Nhập ghi chú sân", noteController),
-                      const SizedBox(height: 10),
-                      GestureDetector(
-                        onTap: _showImagePickerOptions,
-                        child: Column(
-                          children: [
-                            Container(
-                              width: 100,
-                              height: 100,
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.black26),
-                              ),
-                              child: _buildImagePreview(),
-                            ),
-                            const SizedBox(height: 4),
-                            const Text("Thêm ảnh"),
-                          ],
+
+                  _buildTextField("Nhập tên sân", nameController),
+                  _buildTextField("Nhập địa chỉ sân", addressController),
+                  _buildTextField("Nhập giá tiền/giờ", priceController, keyboardType: TextInputType.number),
+                  _buildTextField("Nhập số điện thoại", phoneController, keyboardType: TextInputType.phone),
+                  _buildTextField("Nhập mức cọc (%)", depositController, keyboardType: TextInputType.number),
+                  _buildTextField("Nhập ghi chú sân", noteController),
+
+                  const SizedBox(height: 10),
+                  GestureDetector(
+                    onTap: _showImagePickerOptions,
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.black26),
+                          ),
+                          child: _buildImagePreview(),
                         ),
+                        const SizedBox(height: 4),
+                        const Text("Thêm ảnh", style: TextStyle(color: Colors.blue)),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
+                        ),
+                        child: const Text("HỦY"),
                       ),
-                      const SizedBox(height: 10),
-                      const SizedBox(height: 20),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          ElevatedButton(
-                            onPressed: () => Navigator.pop(context),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 30, vertical: 10),
-                            ),
-                            child: const Text("HỦY"),
-                          ),
-                          const SizedBox(width: 20),
-                          ElevatedButton(
-                            onPressed: _isLoading ? null : _saveField,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 30, vertical: 10),
-                            ),
-                            child: _isLoading
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Text("LƯU"),
-                          ),
-                        ],
+                      const SizedBox(width: 20),
+                      ElevatedButton(
+                        onPressed: _isLoading ? null : _saveField,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text("LƯU"),
                       ),
                     ],
                   ),
-                );
-              },
+                ],
+              ),
             ),
           ],
         ),
@@ -589,28 +398,38 @@ if (areaId == null || areaId == "/areas/m7MXj6UwRGwOxt4ilk0A") {
     );
   }
 
+  // ===================== HIỂN THỊ ẢNH =====================
   Widget _buildImagePreview() {
-    if (_selectedImageFile != null) {
-      return FutureBuilder<Uint8List>(
-        future: _selectedImageFile!.readAsBytes(),
-        builder: (context, snapshot) {
-          if (snapshot.hasData) {
-            return ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.memory(snapshot.data!, fit: BoxFit.cover),
-            );
-          }
-          return const CircularProgressIndicator();
-        },
-      );
+    if (_isUploadingImage) {
+      return const Center(child: CircularProgressIndicator(color: Colors.blue));
     }
-    if (widget.fieldData?['image'] != null &&
-        widget.fieldData!['image'].toString().isNotEmpty) {
+
+    if (_pickedImageFile != null) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: Image.network(widget.fieldData!['image'], fit: BoxFit.cover),
+        child: kIsWeb
+            ? FutureBuilder<Uint8List>(
+                future: _pickedImageFile!.readAsBytes(),
+                builder: (_, snap) {
+                  if (snap.hasData) return Image.memory(snap.data!, fit: BoxFit.cover);
+                  return const CircularProgressIndicator();
+                },
+              )
+            : Image.file(File(_pickedImageFile!.path), fit: BoxFit.cover),
       );
     }
-    return const Icon(Icons.camera_alt, size: 30);
+
+    final oldUrl = widget.fieldData?['image'] as String?;
+    if (oldUrl != null && oldUrl.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.network(oldUrl, fit: BoxFit.cover,
+          loadingBuilder: (_, child, progress) => progress == null ? child : const CircularProgressIndicator(),
+          errorBuilder: (_, __, ___) => const Icon(Icons.error),
+        ),
+      );
+    }
+
+    return const Icon(Icons.camera_alt, size: 30, color: Colors.grey);
   }
-} 
+}

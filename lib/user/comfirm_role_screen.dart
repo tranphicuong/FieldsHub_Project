@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:fieldshub/owner/field_owner_registration_screen.dart';
+import 'package:fieldshub/owner/VerificationScreen.dart';
 import 'package:fieldshub/user/login_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -49,7 +49,7 @@ class _ConfirmRoleScreenState extends State<ConfirmRoleScreen> {
        if (selectedRole == "user") {
          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen()));
       } else {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => FieldOwnerRegistrationScreen()));
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => VerificationScreen()));
        }
 
     } catch (e) {

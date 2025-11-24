@@ -74,7 +74,7 @@ class _MainScreenState extends State<MainScreen> {
       _userId != null
           ? NotificationsScreen(userId: _userId!)
           : const Center(child: CircularProgressIndicator()),
-      const ProfileMainScreen(),
+      const ProfileScreen(),
       const SettingScreen(),
     ];
 
