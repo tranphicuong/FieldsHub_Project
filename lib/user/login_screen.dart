@@ -152,11 +152,12 @@ class _LoginScreenState extends State<LoginScreen> {
             onPressed: () async {
               String email = _emailController.text.trim();
               if (!email.contains('@')) {
-                email = email + '@gmail.com';
+                email = '$email@gmail.com';
               }
               final password = _passwordController.text.trim();
+
               if (email.isEmpty || password.isEmpty) {
-                _showSnackBar("Vui lòng nhập đầy đủ!");
+                _showSnackBar("Vui lòng nhập đầy đủ thông tin!");
                 return;
               }
 
@@ -166,11 +167,99 @@ class _LoginScreenState extends State<LoginScreen> {
                   password: password,
                 );
                 if (result == null) {
-                  _showSnackBar("Không tìm thấy người dùng hoặc vai trò");
+                  _showSnackBar("Email hoặc mật khẩu không đúng!");
                   return;
                 }
-                final String role = result['role'] ?? '';
+
                 final String uid = result['uid'];
+                final String role = result['role'] ?? 'user';
+
+                
+                final lockSnapshot = await FirebaseFirestore.instance
+                    .collection('lockAccount')
+                    .where(
+                      'user_id',
+                      isEqualTo: FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(uid),
+                    )
+                    .where('isComplete', isEqualTo: true)
+                    .limit(1)
+                    .get();
+
+                if (lockSnapshot.docs.isNotEmpty) {
+                  final lockData = lockSnapshot.docs.first.data();
+
+                  final Timestamp? startTs =
+                      lockData['start_time'] as Timestamp?;
+                  final Timestamp? endTs = lockData['end_time'] as Timestamp?;
+                  final String reason = lockData['content'] ?? 'Không có lý do';
+
+                  final String startDate = startTs != null
+                      ? '${startTs.toDate().day}/${startTs.toDate().month}/${startTs.toDate().year} ${startTs.toDate().hour}:${startTs.toDate().minute.toString().padLeft(2, '0')}'
+                      : 'Không xác định';
+                  final String endDate = endTs != null
+                      ? '${endTs.toDate().day}/${endTs.toDate().month}/${endTs.toDate().year} ${endTs.toDate().hour}:${endTs.toDate().minute.toString().padLeft(2, '0')}'
+                      : 'Vô thời hạn';
+
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (ctx) => AlertDialog(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      title: const Row(
+                        children: [
+                          Icon(Icons.lock_outline, color: Colors.red, size: 28),
+                          SizedBox(width: 10),
+                          Text(
+                            "Tài khoản bị khóa",
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Tài khoản của bạn đã bị tạm khóa do vi phạm quy định.",
+                            style: TextStyle(fontSize: 15),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            "• Thời gian khóa:",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          Text("  Từ: $startDate"),
+                          Text("  Đến: $endDate"),
+                          const SizedBox(height: 12),
+                          Text(
+                            "• Lý do:",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          Text("  $reason"),
+                        ],
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          child: const Text(
+                            "Đóng",
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                  return;  
+                }
+
+                
                 if (role == 'owner') {
                   final ownerDocSnap = await FirebaseFirestore.instance
                       .collection('owner_documents')
@@ -196,25 +285,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   if (statusRef?.id != '5') {
                     _showSnackBar(
-                      "Tài khoản chủ sân của bạn chưa được duyệt!Vui lòng chờ Admin phê duyệt.",
+                      "Tài khoản chủ sân của bạn chưa được duyệt! Vui lòng chờ Admin phê duyệt.",
                     );
                     return;
                   }
-                }
 
-                if (role == 'user') {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (_) => const MainUserScreen()),
-                  );
-                } else if (role == 'owner') {
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(builder: (_) => const MainScreen()),
                   );
+                } else if (role == 'user') {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const MainUserScreen()),
+                  );
                 }
               } catch (e) {
-                _showSnackBar(e.toString());
+                _showSnackBar("Lỗi kết nối: ${e.toString()}");
               }
             },
             style: ElevatedButton.styleFrom(

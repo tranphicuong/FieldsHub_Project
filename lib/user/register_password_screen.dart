@@ -257,7 +257,7 @@ class _RegisterPasswordScreen extends State<RegisterPasswordScreen> {
                       obscure: _obscureRePassword,
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscurePassword
+                          _obscureRePassword
                               ? Icons.visibility
                               : Icons.visibility_off,
                           color: Colors.indigo,

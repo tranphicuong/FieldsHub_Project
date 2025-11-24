@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'chat_screen.dart';
 import 'package:fieldshub/Database/database.dart';
+import 'package:fieldshub/utils/user_cache.dart';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({Key? key}) : super(key: key);
@@ -16,12 +16,17 @@ class ChatListScreen extends StatefulWidget {
 
 class _ChatListScreenState extends State<ChatListScreen> {
   final String _currentUserId = FirebaseAuth.instance.currentUser!.uid;
+  final Map<String, Map<String, String>> _userInfoCache = {};
+  bool _isPreloading = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Tin nhắn', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Tin nhắn',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
         elevation: 2,
@@ -30,8 +35,22 @@ class _ChatListScreenState extends State<ChatListScreen> {
         stream: Database.getConversationsStream(_currentUserId),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return const Center(child: Text('Lỗi kết nối'));
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text('Lỗi: ${snapshot.error}'),
+                ],
+              ),
+            );
           }
+
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return _buildEmpty();
           }
@@ -43,6 +62,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
           if (convs.isEmpty) return _buildEmpty();
 
+          // Preload user info trong background
+          _preloadUserInfos(convs);
+
           return ListView.builder(
             padding: const EdgeInsets.all(8),
             itemCount: convs.length,
@@ -51,7 +73,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
               final conv = convDoc.data() as Map<String, dynamic>;
               final convId = convDoc.id;
 
-              // Lấy danh sách user trong cuộc trò chuyện
               final users = List<String>.from(conv['users'] ?? []);
               final otherUserId = users.firstWhere(
                 (id) => id != _currentUserId,
@@ -65,41 +86,77 @@ class _ChatListScreenState extends State<ChatListScreen> {
               final fieldName = conv['fieldName']?.toString() ?? 'Sân bóng';
               final lastMessage = (conv['lastMessage'] as String?) ?? '';
               final lastTime = (conv['lastMessageAt'] as Timestamp?)?.toDate();
-              final unreadCount = (conv['unreadCount'] as Map<String, dynamic>?)?[_currentUserId] ?? 0;
+              final unreadCount =
+                  (conv['unreadCount'] as Map<String, dynamic>?)?[_currentUserId] ?? 0;
 
-              
-              String fallbackName = conv['ownerName']?.toString() ?? 'Chủ sân';
-              String fallbackAvatar = (conv['ownerAvatar'] as String?) ?? '';
+              // Lấy từ cache local
+              String displayName = conv['ownerName']?.toString() ?? 'Chủ sân';
+              String displayAvatar = (conv['ownerAvatar'] as String?) ?? '';
 
-              return FutureBuilder<Map<String, String>>(
-                future: Database.getOtherUserInfo(otherUserId),
-                builder: (context, userSnap) {
-                  String displayName = fallbackName;
-                  String displayAvatar = fallbackAvatar;
+              if (_userInfoCache.containsKey(otherUserId) &&
+                  otherUserId.isNotEmpty) {
+                displayName = _userInfoCache[otherUserId]!['name']!;
+                displayAvatar = _userInfoCache[otherUserId]!['avatar']!;
+              }
 
-                  if (userSnap.hasData && otherUserId.isNotEmpty) {
-                    displayName = userSnap.data!['name']!;
-                    displayAvatar = userSnap.data!['avatar']!;
-                  }
-
-                  return _buildChatTile(
-                    convId: convId,
-                    name: displayName,
-                    avatarUrl: displayAvatar,
-                    lastMessage: lastMessage,
-                    lastTime: lastTime,
-                    unreadCount: unreadCount,
-                    fieldId: fieldId,
-                    fieldName: fieldName,
-                    otherUserId: otherUserId, 
-                  );
-                },
+              return _buildChatTile(
+                convId: convId,
+                name: displayName,
+                avatarUrl: displayAvatar,
+                lastMessage: lastMessage,
+                lastTime: lastTime,
+                unreadCount: unreadCount,
+                fieldId: fieldId,
+                fieldName: fieldName,
+                otherUserId: otherUserId,
               );
             },
           );
         },
       ),
     );
+  }
+
+  /// Preload tất cả user info trong background
+  void _preloadUserInfos(List<QueryDocumentSnapshot> convs) {
+    if (_isPreloading) return;
+
+    _isPreloading = true;
+
+    // Lấy danh sách user IDs cần load
+    final userIdsToLoad = <String>[];
+    for (final convDoc in convs) {
+      final conv = convDoc.data() as Map<String, dynamic>;
+      final users = List<String>.from(conv['users'] ?? []);
+      final otherUserId = users.firstWhere(
+        (id) => id != _currentUserId,
+        orElse: () => '',
+      );
+
+      if (otherUserId.isNotEmpty &&
+          !_userInfoCache.containsKey(otherUserId)) {
+        userIdsToLoad.add(otherUserId);
+      }
+    }
+
+    // Load tất cả user info cùng lúc
+    if (userIdsToLoad.isNotEmpty) {
+      Future.wait(userIdsToLoad.map((uid) => UserCache.getUserInfo(uid)))
+          .then((results) {
+        if (mounted) {
+          setState(() {
+            for (int i = 0; i < userIdsToLoad.length; i++) {
+              _userInfoCache[userIdsToLoad[i]] = results[i];
+            }
+            _isPreloading = false;
+          });
+        }
+      }).catchError((e) {
+        _isPreloading = false;
+      });
+    } else {
+      _isPreloading = false;
+    }
   }
 
   Widget _buildChatTile({
@@ -114,9 +171,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
     required String otherUserId,
   }) {
     final timeStr = lastTime != null ? _formatTime(lastTime) : '';
-    final displayAvatar = avatarUrl.trim().isNotEmpty
-        ? '$avatarUrl?w=100,h=100,c_fill'
-        : '';
+    final displayAvatar =
+        avatarUrl.trim().isNotEmpty ? '$avatarUrl?w=100,h=100,c_fill' : '';
 
     return Dismissible(
       key: Key(convId),
@@ -134,7 +190,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
             title: const Text('Xóa cuộc trò chuyện?'),
             content: const Text('Tin nhắn sẽ bị xóa khỏi danh sách của bạn.'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Hủy'),
+              ),
               TextButton(
                 onPressed: () => Navigator.pop(context, true),
                 child: const Text('Xóa', style: TextStyle(color: Colors.red)),
@@ -143,7 +202,18 @@ class _ChatListScreenState extends State<ChatListScreen> {
           ),
         );
         if (confirm == true) {
-          await Database.deleteConversation(convId: convId, userId: _currentUserId);
+          try {
+            await Database.deleteConversation(
+              convId: convId,
+              userId: _currentUserId,
+            );
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Lỗi xóa: $e')),
+              );
+            }
+          }
         }
         return false;
       },
@@ -151,37 +221,79 @@ class _ChatListScreenState extends State<ChatListScreen> {
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           leading: ClipRRect(
             borderRadius: BorderRadius.circular(28),
-            child: CachedNetworkImage(
-              imageUrl: displayAvatar,
-              width: 56,
-              height: 56,
-              fit: BoxFit.cover,
-              placeholder: (_, __) => Container(color: Colors.grey[300], child: const Icon(Icons.person)),
-              errorWidget: (_, __, ___) => Container(color: Colors.grey[300], child: const Icon(Icons.person)),
-            ),
+            child: displayAvatar.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: displayAvatar,
+                    width: 56,
+                    height: 56,
+                    fit: BoxFit.cover,
+                    memCacheWidth: 112,
+                    memCacheHeight: 112,
+                    placeholder: (_, __) => Container(
+                      width: 56,
+                      height: 56,
+                      color: Colors.grey[300],
+                      child: const Icon(Icons.person),
+                    ),
+                    errorWidget: (_, __, ___) => Container(
+                      width: 56,
+                      height: 56,
+                      color: Colors.grey[300],
+                      child: const Icon(Icons.person),
+                    ),
+                  )
+                : Container(
+                    width: 56,
+                    height: 56,
+                    color: Colors.grey[300],
+                    child: const Icon(Icons.person, size: 32),
+                  ),
           ),
-          title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+          title: Text(
+            name,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+          ),
           subtitle: Text(
             lastMessage.isEmpty ? 'Bắt đầu trò chuyện...' : lastMessage,
-            style: TextStyle(color: lastMessage.isEmpty ? Colors.grey[500] : Colors.black87, fontSize: 13),
+            style: TextStyle(
+              color:
+                  lastMessage.isEmpty ? Colors.grey[500] : Colors.black87,
+              fontSize: 13,
+            ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           trailing: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(timeStr, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+              Text(
+                timeStr,
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+              ),
               if (unreadCount > 0) ...[
                 const SizedBox(height: 4),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                  child: Text(
-                    unreadCount > 99 ? '99+' : '$unreadCount',
-                    style: const TextStyle(color: Colors.white, fontSize: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints:
+                      const BoxConstraints(minWidth: 20, minHeight: 20),
+                  child: Center(
+                    child: Text(
+                      unreadCount > 99 ? '99+' : '$unreadCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -190,13 +302,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
           onTap: () {
             Navigator.push(
               context,
-              PageRouteBuilder(
-                pageBuilder: (_, __, ___) => ChatScreen(
+              MaterialPageRoute(
+                builder: (_) => ChatScreen(
                   fieldId: fieldId,
                   fieldName: fieldName,
                   otherUserId: otherUserId,
                 ),
-                transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
               ),
             );
           },
@@ -212,9 +323,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
         children: [
           Icon(Icons.chat_bubble_outline, size: 80, color: Colors.grey[400]),
           const SizedBox(height: 16),
-          const Text('Chưa có tin nhắn nào', style: TextStyle(fontSize: 18)),
+          const Text(
+            'Chưa có tin nhắn nào',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+          ),
           const SizedBox(height: 8),
-          const Text('Bắt đầu trò chuyện với chủ sân hoặc khách hàng!', style: TextStyle(color: Colors.grey)),
+          Text(
+            'Bắt đầu trò chuyện với chủ sân hoặc khách hàng!',
+            style: TextStyle(color: Colors.grey[600]),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
@@ -228,5 +346,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
     if (date == today) return DateFormat('HH:mm').format(time);
     if (date == today.subtract(const Duration(days: 1))) return 'Hôm qua';
     return DateFormat('dd/MM').format(time);
+  }
+
+  @override
+  void dispose() {
+    _userInfoCache.clear();
+    super.dispose();
   }
 }

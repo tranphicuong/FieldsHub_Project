@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fieldshub/user/chat_screen.dart';
 import 'package:flutter/material.dart';
@@ -33,6 +35,9 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
   double? _cachedRating;
   bool _isLoadingData = false;
 
+  //kiem tra lock owner
+  bool _isOwnerLocked = false;
+  StreamSubscription? _lockSubscription;
   static List<String> _generateHalfHourSlots() {
     final slots = <String>[];
     for (int h = 0; h < 24; h++) {
@@ -50,8 +55,31 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
     super.initState();
     // Load dữ liệu ngay khi khởi tạo
     _loadInitialData();
+    _startListeningToLockStatus();
   }
+ void _startListeningToLockStatus() {
+    final ownerRef = widget.fieldData['owner_id'] as DocumentReference?;
+    if (ownerRef == null) return;
 
+    final ownerUid = ownerRef.id;
+
+    _lockSubscription = FirebaseFirestore.instance
+        .collection('lockAccount')
+        .where('user_id',
+            isEqualTo: FirebaseFirestore.instance.collection('users').doc(ownerUid))
+        .where('isComplete', isEqualTo: true)
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted) return;
+
+      setState(() {
+        _isOwnerLocked = snapshot.docs.isNotEmpty;
+      });
+    }, onError: (error) {
+      debugPrint('Lỗi lắng nghe lockAccount: $error');
+    });
+  }
+  //ham load gia va rating
   Future<void> _loadInitialData() async {
     if (_isLoadingData) return;
     _isLoadingData = true;
@@ -171,6 +199,10 @@ class _FieldBookingCardState extends State<FieldBookingCard> {
 
   @override
   Widget build(BuildContext context) {
+   if (_isOwnerLocked) {
+      return const SizedBox.shrink();
+    }
+    
     final data = widget.fieldData;
     final name = data['name'] ?? 'Không tên';
     final description = data['description'] ?? '';

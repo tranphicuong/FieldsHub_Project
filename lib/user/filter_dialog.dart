@@ -26,6 +26,22 @@ Future<FilterResult?> showFilterDialog({
   RangeValues tempTime = timeRange;
   Set<String> tempDistricts = Set.from(selectedDistricts);
   int tempRating = selectedRating;
+  String? selectedDistrict;
+
+  final List<String> districts = [
+    'Thủ Đức',
+    'Bình Thạnh',
+    'Gò Vấp',
+    'Quận 7',
+    'Quận 8',
+    'Tân Bình',
+    'Phú Nhuận',
+    'Tân Phú',
+    'Quận 11',
+    'Quận 12',
+    'Quận 3',
+    'Quận 10',
+  ];
 
   String formatMoney(double value) {
     return "${NumberFormat('#,###').format(value.toInt())} đ";
@@ -143,57 +159,66 @@ Future<FilterResult?> showFilterDialog({
                             ),
                             const SizedBox(height: 20),
 
-                            // Khu vực
+                            // Khu vực - Dropdown
                             const Text(
                               "Khu vực",
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children:
-                                  [
-                                    'Thủ Đức',
-                                    'Bình Thạnh',
-                                    'Gò Vấp',
-                                    'Quận 7',
-                                    'Quận 8',
-                                    'Tân Bình',
-                                    'Phú Nhuận',
-                                    'Tân Phú',
-                                    'Quận 11',
-                                    'Quận 12',
-                                    'Quận 3',
-                                    'Quận 10',
-                                  ].map((d) {
-                                    return FilterChip(
-                                      label: Text(d),
-                                      selected: tempDistricts.contains(d),
-                                      selectedColor: Colors.blue.withOpacity(
-                                        0.2,
-                                      ),
-                                      checkmarkColor: Colors.blue,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(20),
-                                        side: BorderSide(
-                                          color: tempDistricts.contains(d)
-                                              ? Colors.blue
-                                              : Colors.grey[400]!,
-                                        ),
-                                      ),
-                                      onSelected: (selected) {
-                                        setModalState(() {
-                                          if (selected) {
-                                            tempDistricts.add(d);
-                                          } else {
-                                            tempDistricts.remove(d);
-                                          }
-                                        });
-                                      },
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey[400]!),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  isExpanded: true,
+                                  hint: const Text('Chọn quận/huyện'),
+                                  value: selectedDistrict,
+                                  icon: const Icon(Icons.arrow_drop_down),
+                                  items: districts.map((String district) {
+                                    return DropdownMenuItem<String>(
+                                      value: district,
+                                      child: Text(district),
                                     );
                                   }).toList(),
+                                  onChanged: (String? newValue) {
+                                    if (newValue != null) {
+                                      setModalState(() {
+                                        selectedDistrict = newValue;
+                                        if (!tempDistricts.contains(newValue)) {
+                                          tempDistricts.add(newValue);
+                                        }
+                                      });
+                                    }
+                                  },
+                                ),
+                              ),
                             ),
+                            const SizedBox(height: 12),
+                            
+                            // Hiển thị các quận đã chọn
+                            if (tempDistricts.isNotEmpty)
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: tempDistricts.map((district) {
+                                  return Chip(
+                                    label: Text(district),
+                                    backgroundColor: Colors.blue.withOpacity(0.1),
+                                    deleteIcon: const Icon(
+                                      Icons.close,
+                                      size: 18,
+                                    ),
+                                    onDeleted: () {
+                                      setModalState(() {
+                                        tempDistricts.remove(district);
+                                      });
+                                    },
+                                  );
+                                }).toList(),
+                              ),
                             const SizedBox(height: 20),
 
                             // Đánh giá
@@ -265,9 +290,9 @@ Future<FilterResult?> showFilterDialog({
                                   tempTime = const RangeValues(6, 22);
                                   tempDistricts.clear();
                                   tempRating = 0;
+                                  selectedDistrict = null;
                                 });
 
-                                
                                 Navigator.pop(
                                   context,
                                   const FilterResult(

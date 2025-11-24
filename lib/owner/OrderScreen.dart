@@ -31,37 +31,31 @@ class _OrdersMainScreenState extends State<OrdersMainScreen>
 
   /// 🔹 Stream lấy danh sách bookings theo trạng thái
   Stream<QuerySnapshot> _getBookingsStream(String statusFilter) {
-    final currentUser = _auth.currentUser;
-    if (currentUser == null) {
-      print("Không có người dùng được xác thực!");
-      return const Stream.empty();
-    }
+  final currentUser = _auth.currentUser;
+  if (currentUser == null) return const Stream.empty();
 
-    print("Truy vấn với user_id: /users/${currentUser.uid}, status_filter: $statusFilter");
+  final collection = FirebaseFirestore.instance.collection('pending_payments');
 
-    if (_isDebugMode) {
-      return FirebaseFirestore.instance
-          .collection('bookings')
-          .orderBy('created_at', descending: true)
-          .snapshots();
-    } else {
-      if (statusFilter == "Lịch sử") {
-        return FirebaseFirestore.instance
-            .collection('bookings')
-            .where('user_id', isEqualTo: '/users/${currentUser.uid}')
-            .where('status', whereIn: ['Hoàn thành', 'Bị từ chối'])
-            .orderBy('created_at', descending: true)
-            .snapshots();
-      } else {
-        return FirebaseFirestore.instance
-            .collection('bookings')
-            .where('user_id', isEqualTo: '/users/${currentUser.uid}')
-            .where('status', isEqualTo: statusFilter)
-            .orderBy('created_at', descending: true)
-            .snapshots();
-      }
-    }
+  // Debug mode (chỉ để test)
+  if (_isDebugMode) {
+    return collection.orderBy('created_at', descending: true).snapshots();
   }
+
+  // CHUẨN CHO 4 TAB – DÙNG status LÀ CHUỖI
+  if (statusFilter == "Lịch sử") {
+    return collection
+        .where('owner_id', isEqualTo: currentUser.uid)
+        .where('status_string', whereIn: ['Hoàn thành', 'Bị từ chối'])
+        .orderBy('created_at', descending: true)
+        .snapshots();
+  } else {
+    return collection
+        .where('owner_id', isEqualTo: currentUser.uid)
+        .where('status_string', isEqualTo: statusFilter)
+        .orderBy('created_at', descending: true)
+        .snapshots();
+  }
+}
 
   /// 🔹 Hàm định dạng Timestamp -> String
   String _formatTimestamp(Timestamp? timestamp) {
@@ -70,32 +64,7 @@ class _OrdersMainScreenState extends State<OrdersMainScreen>
     return DateFormat('dd/MM/yyyy HH:mm').format(dateTime);
   }
 
-  /// Lấy địa chỉ từ collection fields
-  Future<String> _getAddressFromField(Map<String, dynamic> fieldData, String fieldId) async {
-    String address = (fieldData['diaChi'] as String?) ?? '';
-    if (address.isEmpty || address == '—') {
-      try {
-        dynamic areaRef = fieldData['area_id'];
-        DocumentSnapshot? areaDoc;
-
-        if (areaRef is DocumentReference) {
-          areaDoc = await areaRef.get();
-        } else if (areaRef is String) {
-          areaDoc = await FirebaseFirestore.instance
-              .collection('areas')
-              .doc(areaRef)
-              .get();
-        }
-
-        address = (areaDoc?.data() as Map<String, dynamic>?)?['address'] as String? ??
-            'Không có địa chỉ';
-      } catch (e) {
-        debugPrint('Lỗi fetch address cho field $fieldId: $e');
-        address = 'Không xác định';
-      }
-    }
-    return address;
-  }
+  
 
   /// 🔹 Màu trạng thái
   Color _getStatusColor(String status) {
@@ -219,6 +188,14 @@ class _OrdersMainScreenState extends State<OrdersMainScreen>
                   Text('Địa chỉ: $address'),
                   Text('Khung giờ: $startTime - $endTime'),
                   Text('Thanh toán: ${data['payment_method'] ?? 'Phương thức không xác định'}'),
+                  Text(
+                    'Số tiền: ${NumberFormat.currency(locale: 'vi', symbol: 'đ').format(data['total_amount'] ?? data['amount'] ?? 0)}',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.redAccent,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -234,7 +211,7 @@ class _OrdersMainScreenState extends State<OrdersMainScreen>
                         Row(
                           children: [
                             ElevatedButton(
-                              onPressed: () => _confirmBooking(context, docId, data),
+                              onPressed: () => _confirmBooking(context, docId),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.green,
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -244,7 +221,7 @@ class _OrdersMainScreenState extends State<OrdersMainScreen>
                             ),
                             const SizedBox(width: 8),
                             ElevatedButton(
-                              onPressed: () => _rejectBooking(context, docId, data),
+                              onPressed: () => _rejectBooking(context, docId),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.red,
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -264,76 +241,151 @@ class _OrdersMainScreenState extends State<OrdersMainScreen>
       },
     );
   }
+/// Gửi thông báo realtime cho người dùng
+/// Gửi thông báo realtime cho người dùng - ĐÃ SỬA
+Future<void> _sendNotificationToUser({
+  required String userId,
+  required String title,
+  required String subtitle,
+  required Map<String, dynamic> extraData,
+}) async {
+  try {
+    final userRef = FirebaseFirestore.instance.collection('users').doc(userId);
 
-  /// ✅ Xác nhận đơn đặt sân
-  Future<void> _confirmBooking(
-      BuildContext context, String bookingId, Map<String, dynamic> data) async {
-    try {
-      final statusRef =
-          FirebaseFirestore.instance.collection('status').doc('confirmed');
+    await FirebaseFirestore.instance.collection('notifications').add({
+      'user_id': userRef,
+      'title': title,
+      'subtitle': subtitle,
+      'field_name': extraData['field_name'] ?? '',
+      'address': extraData['address'] ?? '',
+      
+      // ✅ LƯU RIÊNG start_time và end_time
+      'start_time': extraData['start_time'],  // Timestamp
+      'end_time': extraData['end_time'],      // Timestamp
+      
+      'payment_method': extraData['payment_method'] ?? '',
+      'field_id': extraData['field_id'],
+      'is_read': false,
+      'created_at': FieldValue.serverTimestamp(),
+    });
+    
+    print('✅ Đã gửi thông báo cho user: $userId');
+  } catch (e) {
+    print('❌ Lỗi gửi thông báo: $e');
+  }
+}
 
-      await FirebaseFirestore.instance.collection('bookings').doc(bookingId).update({
-        'status': 'Đã xác nhận',
-        'status_id': statusRef,
-        'updated_at': FieldValue.serverTimestamp(),
-      });
+/// ✅ XÁC NHẬN ĐƠN - Đã sửa
+Future<void> _confirmBooking(BuildContext context, String bookingId) async {
+  try {
+    final bookingDoc = await FirebaseFirestore.instance
+        .collection('pending_payments')
+        .doc(bookingId)
+        .get();
 
-      await FirebaseFirestore.instance.collection('notifications').add({
-        'title': 'Đơn đặt sân đã được xác nhận!',
-        'subtitle': data['subtitle'] ?? '',
+    if (!bookingDoc.exists) return;
+
+    final data = bookingDoc.data()!;
+    final userId = data['user_id'] as String;
+
+    // 1. Cập nhật trạng thái đơn
+    await FirebaseFirestore.instance
+        .collection('pending_payments')
+        .doc(bookingId)
+        .update({
+      'status': 'Đã xác nhận',
+      'status_string': 'Đã xác nhận',
+      'status_id': FirebaseFirestore.instance.doc('status/2'),
+      'updated_at': FieldValue.serverTimestamp(),
+    });
+
+    // 2. GỬI THÔNG BÁO CHO KHÁCH HÀNG
+    await _sendNotificationToUser(
+      userId: userId,
+      title: "Đơn đặt sân được xác nhận ",
+      subtitle: "Chủ sân đã chấp nhận đơn đặt sân của bạn",
+      extraData: {
         'field_name': data['field_name'] ?? '',
         'address': data['address'] ?? '',
-        'time_slot':
-            '${_formatTimestamp(data['start_time'] as Timestamp?)} - ${_formatTimestamp(data['end_time'] as Timestamp?)}',
+        'start_time': data['start_time'],  // ✅ Gửi riêng
+        'end_time': data['end_time'],      // ✅ Gửi riêng
         'payment_method': data['payment_method'] ?? '',
-        'is_read': false,
-        'created_at': FieldValue.serverTimestamp(),
-        'user_id': data['user_id'],
-      });
+        'field_id': data['field_id'],
+      },
+    );
 
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ Đã xác nhận đơn thành công')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi khi xác nhận đơn: $e')),
+        const SnackBar(
+          content: Text('Đã xác nhận & gửi thông báo cho khách!'),
+          backgroundColor: Colors.green,
+        ),
       );
     }
-  }
-
-  /// ❌ Từ chối đơn đặt sân
-  Future<void> _rejectBooking(
-      BuildContext context, String bookingId, Map<String, dynamic> data) async {
-    try {
-      final statusRef =
-          FirebaseFirestore.instance.collection('status').doc('rejected');
-
-      await FirebaseFirestore.instance.collection('bookings').doc(bookingId).update({
-        'status': 'Bị từ chối',
-        'status_id': statusRef,
-        'updated_at': FieldValue.serverTimestamp(),
-      });
-
-      await FirebaseFirestore.instance.collection('notifications').add({
-        'title': 'Đơn đặt sân đã bị từ chối',
-        'subtitle': data['subtitle'] ?? '',
-        'field_name': data['field_name'] ?? '',
-        'address': data['address'] ?? '',
-        'time_slot':
-            '${_formatTimestamp(data['start_time'] as Timestamp?)} - ${_formatTimestamp(data['end_time'] as Timestamp?)}',
-        'payment_method': data['payment_method'] ?? '',
-        'is_read': false,
-        'created_at': FieldValue.serverTimestamp(),
-        'user_id': data['user_id'],
-      });
-
+  } catch (e) {
+    print('❌ Lỗi xác nhận đơn: $e');
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('❌ Đã từ chối đơn đặt sân')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi khi từ chối đơn: $e')),
+        SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
       );
     }
   }
 }
+
+/// ❌ TỪ CHỐI ĐƠN - Đã sửa
+Future<void> _rejectBooking(BuildContext context, String bookingId) async {
+  try {
+    final bookingDoc = await FirebaseFirestore.instance
+        .collection('pending_payments')
+        .doc(bookingId)
+        .get();
+
+    if (!bookingDoc.exists) return;
+
+    final data = bookingDoc.data()!;
+    final userId = data['user_id'] as String;
+
+    // 1. Cập nhật trạng thái
+    await FirebaseFirestore.instance
+        .collection('pending_payments')
+        .doc(bookingId)
+        .update({
+      'status': 'Bị từ chối',
+      'status_string': 'Bị từ chối',
+      'status_id': FirebaseFirestore.instance.doc('status/3'),
+      'updated_at': FieldValue.serverTimestamp(),
+    });
+
+    // 2. GỬI THÔNG BÁO TỪ CHỐI
+    await _sendNotificationToUser(
+      userId: userId,
+      title: "Đơn đặt sân bị từ chối ❌",
+      subtitle: "Rất tiếc, chủ sân đã từ chối đơn của bạn",
+      extraData: {
+        'field_name': data['field_name'] ?? '',
+        'address': data['address'] ?? '',
+        'start_time': data['start_time'],  // ✅ Gửi riêng
+        'end_time': data['end_time'],      // ✅ Gửi riêng
+        'payment_method': data['payment_method'] ?? '',
+        'field_id': data['field_id'],
+      },
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã từ chối & gửi thông báo cho khách!'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  } catch (e) {
+    print('❌ Lỗi từ chối đơn: $e');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+}
+    }
