@@ -32,7 +32,7 @@ class _ManageFieldScreenState extends State<ManageFieldScreen> {
   String areaId = "/areas/m7MXj6UwRGwOxt4ilk0A";
 
   bool _isLoading = false;
-  late Future<List<String>> _sportsCategories;
+  late Future<List<Map<String, dynamic>>> _sportsCategories;
 
   @override
   void initState() {
@@ -70,10 +70,27 @@ class _ManageFieldScreenState extends State<ManageFieldScreen> {
     }
   }
 
-  Future<List<String>> _fetchSportsCategories() async {
+  Future<List<Map<String, dynamic>>> _fetchSportsCategories() async {
+  try {
     final snap = await FirebaseFirestore.instance.collection('sports').get();
-    return snap.docs.map((e) => e.id).toList();
+
+    // Sắp xếp theo tên tiếng Việt cho đẹp (tùy chọn)
+    final List<Map<String, dynamic>> categories = snap.docs.map((doc) {
+      return {
+        'id': doc.id,                            // BongChuyen, BongDa...
+        'name': doc.get('name') ?? doc.id,       // "Bóng chuyền", "Bóng đá"...
+      };
+    }).toList();
+
+    // Sắp xếp theo tên hiển thị (nếu muốn)
+    categories.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
+
+    return categories;
+  } catch (e) {
+    debugPrint("Lỗi load sports: $e");
+    return [];
   }
+}
 
   // ===================== CHỌN ẢNH =====================
   void _showImagePickerOptions() {
@@ -301,23 +318,53 @@ class _ManageFieldScreenState extends State<ManageFieldScreen> {
               child: Column(
                 children: [
                   // Danh mục
-                  FutureBuilder<List<String>>(
-                    future: _sportsCategories,
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) return const CircularProgressIndicator();
-                      return DropdownButtonFormField<String>(
-                        value: selectedCategory,
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        hint: const Text("Chọn danh mục"),
-                        items: snapshot.data!.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                        onChanged: (v) => setState(() => selectedCategory = v),
-                      );
-                    },
-                  ),
+                  // THAY TOÀN BỘ FutureBuilder này:
+FutureBuilder<List<Map<String, dynamic>>>(
+  future: _sportsCategories,
+  builder: (context, snapshot) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const CircularProgressIndicator();
+    }
+    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+      return  DropdownButtonFormField<String>(
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        hint: Text("Không tải được danh mục"),
+        items: [],
+        onChanged: null,
+      );
+    }
+
+    final categories = snapshot.data!;
+
+    return DropdownButtonFormField<String>(
+      value: selectedCategory,
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      ),
+      hint: const Text("Chọn danh mục"),
+      items: categories.map((cat) {
+        return DropdownMenuItem<String>(
+          value: cat['id'] as String,        // giá trị lưu: BongChuyen
+          child: Text(cat['name'] as String), // hiển thị: Bóng chuyền
+        );
+      }).toList(),
+      onChanged: (String? newValue) {
+        if (newValue != null) {
+          setState(() {
+            selectedCategory = newValue;
+          });
+        }
+      },
+    );
+  },
+),
 
                   _buildTextField("Nhập tên sân", nameController),
                   _buildTextField("Nhập địa chỉ sân", addressController),

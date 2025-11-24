@@ -79,8 +79,8 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
         .collection('bookings')
         .where('owner_id', isEqualTo: userId)
         .where('status', isEqualTo: 'Đã xác nhận')
-        .where('start_time', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDayUtc))
-        .where('start_time', isLessThanOrEqualTo: Timestamp.fromDate(endOfDayUtc))
+        .where('updated_at', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDayUtc))
+        .where('updated_at', isLessThanOrEqualTo: Timestamp.fromDate(endOfDayUtc))
         .snapshots()
         .listen((snapshot) async {
       await _processConfirmedBookings(snapshot);
@@ -102,80 +102,86 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
         .collection('bookings')
         .where('owner_id', isEqualTo: userId)
         .where('status', isEqualTo: 'Đã xác nhận')
-        .where('start_time', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonthUtc))
+        .where('updated_at', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonthUtc))
         .snapshots()
         .listen((snapshot) => _processConfirmedBookings(snapshot));
   }
 
   // XỬ LÝ TIỀN CỌC
   Future<void> _processPendingPayments(QuerySnapshot snapshot, {required bool isToday}) async {
-    double addedTotal = 0;
-    final Map<String, double> sportRevenue = {};
-    final Map<int, Map<String, double>> hourlyData = {};
+  double addedToday = 0;
+  double addedMonth = 0;
+  final Map<String, double> sportRevenue = {};
+  final Map<int, Map<String, double>> hourlyData = {};
 
-    for (var doc in snapshot.docs) {
-      final data = doc.data() as Map<String, dynamic>;
-      final deposit = (data['deposit_amount'] ?? data['amount'] ?? 0) as num;
-      final createdAt = _toVietnamTime(data['created_at'] as Timestamp?);
-      final hour = createdAt.hour;
-      final sportId = data['sport_id'] ?? data['field_id'];
+  for (var doc in snapshot.docs) {
+    final data = doc.data() as Map<String, dynamic>;
+    final deposit = (data['deposit_amount'] ?? data['amount'] ?? 0).toDouble();
+    
+    final createdAt = _toVietnamTime(data['created_at'] as Timestamp?);
+    final hour = (createdAt.hour - 7 + 24) % 24;
+    final sportName = await _getSportName(data['sport_id'] ?? data['field_id']);
 
-      final sportName = await _getSportName(sportId);
-      final price = deposit.toDouble();
+    // Luôn tính vào tháng
+    addedMonth += deposit;
+    _monthlyTotal += deposit; // ← Đảm bảo cộng vào tổng tháng
 
-      if (isToday) {
-        addedTotal += price;
-        sportRevenue[sportName] = (sportRevenue[sportName] ?? 0) + price;
-        hourlyData.putIfAbsent(hour, () => {});
-        hourlyData[hour]![sportName] = (hourlyData[hour]![sportName] ?? 0) + price;
-      } else {
-        _monthlyTotal += price;
-      }
-    }
+    if (isToday) {
+      addedToday += deposit;
+      sportRevenue[sportName] = (sportRevenue[sportName] ?? 0) + deposit;
 
-    if (mounted && isToday) {
-      setState(() {
-        _todayTotal += addedTotal;
-        _updatePieChart(sportRevenue, true);
-        _updateHourlyBar(hourlyData);
-      });
-    } else if (mounted) {
-      setState(() {});
+      hourlyData.putIfAbsent(hour, () => {});
+      hourlyData[hour]![sportName] = (hourlyData[hour]![sportName] ?? 0) + deposit;
     }
   }
+
+  if (mounted) {
+    setState(() {
+      if (isToday) {
+        _todayTotal += addedToday;
+        _updatePieChart(sportRevenue, true);
+        _updateHourlyBar(hourlyData);
+      }
+      // Không cần else vì _monthlyTotal đã được cộng trực tiếp ở trên
+    });
+  }
+}
 
   // XỬ LÝ ĐƠN ĐÃ XÁC NHẬN (tiền còn lại)
-  Future<void> _processConfirmedBookings(QuerySnapshot snapshot) async {
-    double addedTotal = 0;
-    final Map<String, double> sportRevenue = {};
-    final Map<int, Map<String, double>> hourlyData = {};
+  Future<void> _processConfirmedBookings(QuerySnapshot snapshot, {bool isToday = true}) async {
+  double addedToday = 0;
+  final Map<String, double> sportRevenue = {};
+  final Map<int, Map<String, double>> hourlyData = {};
 
-    for (var doc in snapshot.docs) {
-      final data = doc.data() as Map<String, dynamic>;
-      final price = (data['price'] as num?)?.toDouble() ?? 0;
-      final startTime = _toVietnamTime(data['start_time']);
-      final hour = startTime.hour;
-      final sportId = data['sport_id'];
+  for (var doc in snapshot.docs) {
+    final data = doc.data() as Map<String, dynamic>;
+    final price = (data['price'] as num?)?.toDouble() ?? 0;
+    
+    final confirmedTime = _toVietnamTime(data['updated_at'] as Timestamp?);
+    final hour = (confirmedTime.hour - 7 + 24) % 24;
+    final sportName = await _getSportName(data['sport_id']);
 
-      final sportName = await _getSportName(sportId);
+    // Luôn tính vào tháng
+    _monthlyTotal += price;
 
-      addedTotal += price;
+    if (isToday) {
+      addedToday += price;
       sportRevenue[sportName] = (sportRevenue[sportName] ?? 0) + price;
+
       hourlyData.putIfAbsent(hour, () => {});
       hourlyData[hour]![sportName] = (hourlyData[hour]![sportName] ?? 0) + price;
-
-      _monthlyTotal += price;
-    }
-
-    if (mounted) {
-      setState(() {
-        _todayTotal += addedTotal;
-        _updatePieChart(sportRevenue, true);
-        _updateHourlyBar(hourlyData);
-      });
     }
   }
 
+  if (mounted && isToday) {
+    setState(() {
+      _todayTotal += addedToday;
+      _updatePieChart(sportRevenue, true);
+      _updateHourlyBar(hourlyData);
+    });
+  }
+  // Không cần setState nếu không phải hôm nay → tránh rebuild liên tục
+}
   void _updatePieChart(Map<String, double> sportRevenue, bool isDaily) {
     final total = sportRevenue.values.fold(0.0, (a, b) => a + b);
     final List<PieChartSectionData> sections = sportRevenue.entries.map((e) {
@@ -206,50 +212,134 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
   }
 
   void _updateHourlyBar(Map<int, Map<String, double>> hourlyData) {
-    final newHourly = List<BarChartGroupData>.from(hourlyBarData);
+  final newHourly = List<BarChartGroupData>.from(hourlyBarData);
 
-    for (var entry in hourlyData.entries) {
-      final hour = entry.key;
-      final sportMap = entry.value;
-      final rods = sportMap.entries.map((e) {
-        return BarChartRodData(toY: e.value, color: _getSportColor(e.key), width: 14);
-      }).toList();
+  for (var entry in hourlyData.entries) {
+    final hour = entry.key;
+    final sportMap = entry.value;
+    
+    // Tạo các cột cho từng môn thể thao
+    final rods = sportMap.entries.map((e) {
+      return BarChartRodData(
+        toY: e.value,
+        color: _getSportColor(e.key),
+        width: 14,
+        borderRadius: BorderRadius.circular(4), // Bo góc cho đẹp
+      );
+    }).toList();
 
+    // Cập nhật hoặc gộp với dữ liệu cũ nếu đã có
+    if (newHourly[hour].barRods.first.toY > 0) {
+      // Gộp dữ liệu mới với cũ
+      final existingRods = newHourly[hour].barRods;
+      final mergedRods = <BarChartRodData>[];
+      
+      for (var newRod in rods) {
+        final existingRod = existingRods.firstWhere(
+          (r) => r.color == newRod.color,
+          orElse: () => BarChartRodData(toY: 0, color: newRod.color),
+        );
+        mergedRods.add(BarChartRodData(
+          toY: existingRod.toY + newRod.toY,
+          color: newRod.color,
+          width: 14,
+          borderRadius: BorderRadius.circular(4),
+        ));
+      }
+      
+      newHourly[hour] = BarChartGroupData(x: hour, barRods: mergedRods);
+    } else {
+      // Chưa có dữ liệu, thêm mới
       newHourly[hour] = BarChartGroupData(
         x: hour,
         barRods: rods.isNotEmpty ? rods : [BarChartRodData(toY: 0, color: Colors.transparent)],
       );
     }
-
-    if (mounted) setState(() => hourlyBarData = newHourly);
   }
 
-  Future<String> _getSportName(dynamic sportId) async {
-    if (sportId == null) return 'Khác';
-    String path = sportId is DocumentReference ? sportId.path : sportId.toString();
-    if (_sportCache.containsKey(path)) return _sportCache[path]!;
+  if (mounted) setState(() => hourlyBarData = newHourly);
+}
 
-    try {
-      final doc = await _firestore.doc(path).get();
-      if (doc.exists) {
-        final name = (doc.data() as Map)['name']?.toString() ?? 'Khác';
-        _sportCache[path] = name;
-        return name;
+  // THAY TOÀN BỘ HÀM NÀY
+Future<String> _getSportName(dynamic fieldRef) async {
+  if (fieldRef == null) return 'Khác';
+
+  DocumentReference? sportRef;
+
+  // 1. Nếu là DocumentReference
+  if (fieldRef is DocumentReference) {
+    if (fieldRef.parent.id == 'sports') {
+      sportRef = fieldRef;
+    } else if (fieldRef.parent.id == 'fields') {
+      final fieldDoc = await fieldRef.get();
+      if (!fieldDoc.exists) return 'Khác';
+      final data = fieldDoc.data() as Map<String, dynamic>;
+      final sportId = data['sport_id'];
+      if (sportId is DocumentReference && sportId.parent.id == 'sports') {
+        sportRef = sportId;
+      } else if (sportId is String && sportId.contains('sports/')) {
+        sportRef = _firestore.doc(sportId);
       }
-    } catch (_) {}
-    _sportCache[path] = 'Khác';
+    }
+  }
+  // 2. Nếu là String
+  else if (fieldRef is String) {
+    if (fieldRef.contains('sports/')) {
+      sportRef = _firestore.doc(fieldRef);
+    } else {
+      // Tự động thêm prefix nếu chỉ có ID như "BongDa"
+      sportRef = _firestore.doc('sports/$fieldRef');
+    }
+  }
+
+  if (sportRef == null) return 'Khác';
+
+  final cacheKey = sportRef.path;
+  if (_sportCache.containsKey(cacheKey)) {
+    return _sportCache[cacheKey]!;
+  }
+
+  try {
+    final doc = await sportRef.get();
+    if (!doc.exists) {
+      _sportCache[cacheKey] = 'Khác';
+      return 'Khác';
+    }
+
+    final name = (doc['name'] as String?)?.trim();
+    if (name == null || name.isEmpty) {
+      _sportCache[cacheKey] = 'Khác';
+      return 'Khác';
+    }
+    
+    // Chuẩn hóa tên để hiển thị đẹp + dễ match màu
+    final normalized = switch (doc.id.toLowerCase()) {
+      'BongDa' => 'Bóng đá',
+      'CauLong' => 'Cầu lông',
+      'BongChuyen' => 'Bóng chuyền',
+      'bida' => 'Bida',
+      _ => name,
+    };
+
+    _sportCache[cacheKey] = normalized;
+    return normalized;
+  } catch (e) {
     return 'Khác';
   }
+}
 
-  Color _getSportColor(String sport) {
-    final s = sport.toLowerCase();
-    if (s.contains('bóng đá') || s.contains('bongda')) return Colors.green.shade600;
-    if (s.contains('cầu lông') || s.contains('caulong')) return Colors.blue.shade600;
-    if (s.contains('bóng chuyền')) return Colors.purple.shade600;
-    if (s.contains('bida')) return Colors.brown.shade600;
-    return Colors.grey.shade600;
-  }
+// VÀ THAY HÀM MÀU BẰNG CÁI NÀY (dùng doc.id thay vì name)
+Color _getSportColor(String sportName) {
+  // Dùng tên đã chuẩn hóa hoặc fallback bằng logic cũ
+  final s = sportName.toLowerCase();
 
+  if (s.contains('bóng đá') || s.contains('bongda')) return Colors.green.shade600;
+  if (s.contains('cầu lông') || s.contains('caulong')) return Colors.blue.shade600;
+  if (s.contains('bóng chuyền') || s.contains('bongchuyen')) return Colors.purple.shade600;
+  if (s.contains('bida')) return Colors.brown.shade600;
+
+  return Colors.grey.shade600;
+}
   @override
   Widget build(BuildContext context) {
     return Scaffold(

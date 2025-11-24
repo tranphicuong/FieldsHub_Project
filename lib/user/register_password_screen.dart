@@ -30,7 +30,8 @@ class _RegisterPasswordScreen extends State<RegisterPasswordScreen> {
 
   String? _otpSent;
   DateTime? _otpExpire;
-
+  bool _obscurePassword = true;
+  bool _obscureRePassword = true;
   //gui ma otp
 
   Future<void> _sendOtp() async {
@@ -42,12 +43,26 @@ class _RegisterPasswordScreen extends State<RegisterPasswordScreen> {
         _otpExpire = DateTime.now().add(const Duration(minutes: 5));
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Mã OTP đã được gửi đến email")),
+        SnackBar(
+          content: Text("Mã OTP đã được gửi đến email"),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Gửi OTP thất bại: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Gửi OTP thất bại: $e"),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
     }
   }
 
@@ -60,39 +75,71 @@ class _RegisterPasswordScreen extends State<RegisterPasswordScreen> {
     final otpInput = _otpController.text.trim();
 
     if (password != _repasswordController.text.trim()) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Mật khẩu nhập lại không khớp")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Mật khẩu nhập lại không khớp"),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
       return;
     }
     if (password.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(" Mật khẩu phải có ít nhất 6 ký tự")),
+        SnackBar(
+          content: Text(" Mật khẩu phải có ít nhất 6 ký tự"),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
       );
       return;
     }
-    if(_otpSent ==null){
+    if (_otpSent == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Vui lòng gửi mã OTP")),
+        SnackBar(
+          content: Text("Vui lòng gửi mã OTP"),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
       );
       return;
     }
-    if(DateTime.now().isAfter(_otpExpire!)){
+    if (DateTime.now().isAfter(_otpExpire!)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Mã OTP đã hết hạn")),
-
+        SnackBar(
+          content: Text("Mã OTP đã hết hạn"),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
       );
-      return; 
+      return;
     }
-    if(otpInput != _otpSent){
+    if (otpInput != _otpSent) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Mã OTP không chính xác")),
-
+        SnackBar(
+          content: Text("Mã OTP không chính xác"),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
       );
       return;
     }
 
-    
     try {
       UserCredential userCredential = await _auth
           .createUserWithEmailAndPassword(email: email, password: password);
@@ -101,7 +148,7 @@ class _RegisterPasswordScreen extends State<RegisterPasswordScreen> {
         'phone': phone,
         'email': email,
         'address': '',
-        'avatar': 'avatar',
+        'avatar': '',
         'dob': null,
         'gender': '',
         'role_id': '/roles/3',
@@ -112,9 +159,16 @@ class _RegisterPasswordScreen extends State<RegisterPasswordScreen> {
         MaterialPageRoute(builder: (context) => const ConfirmRoleScreen()),
       );
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Loi: ${e.message}")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Loi: ${e.message}"),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 50, left: 20, right: 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
     }
   }
 
@@ -124,84 +178,138 @@ class _RegisterPasswordScreen extends State<RegisterPasswordScreen> {
       backgroundColor: Color(0xFFE3F2FD),
       body: Stack(
         children: [
-          Positioned(top: -100, left: -30, child: _circle(235)),
-          Positioned(top: -50, left: 170, child: _circle(280)),
-          Positioned(bottom: -120, left: -60, child: _circle(220)),
-          //noi dung
-          SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 30,
-                vertical: 150,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
+          // RESPONSIVE BACKGROUND CIRCLES
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final height = constraints.maxHeight;
+
+              return Stack(
                 children: [
-                  const SizedBox(height: 100),
-                  const Text(
-                    "Password-Recode",
-                    style: TextStyle(
-                      fontSize: 25,
-                      color: Color.fromARGB(255, 23, 3, 249),
-                      fontWeight: FontWeight.bold,
-                    ),
+                  // Top-left circle
+                  Positioned(
+                    top: -height * 0.15,
+                    left: -width * 0.2,
+                    child: _circle(width * 0.65),
                   ),
-                  const SizedBox(height: 20),
-                  //noi dung
-                  _textfield(
-                    controller: _passwordController,
-                    label: "Password",
-                    icon: Icons.lock_outline,
-                    obscure: true,
+                  // Top-right circle
+                  Positioned(
+                    top: -height * 0.1,
+                    left: width * 0.35,
+                    child: _circle(width * 0.75),
                   ),
-                  const SizedBox(height: 10),
-                  _textfield(
-                    controller: _repasswordController,
-                    label: "Re-Password",
-                    icon: Icons.lock_outline,
-                    obscure: true,
-                  ),
-                  const SizedBox(height: 0.5),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton(
-                      onPressed: _sendOtp,
-                      child: const Text(
-                        "Send Confirmation Code Via Email",
-                        style: TextStyle(
-                          color: Colors.indigo,
-                          fontSize: 13,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _textfield(
-                    controller: _otpController,
-                    label: "OTP",
-                    icon: Icons.mark_email_unread_outlined,
-                  ),
-                  const SizedBox(height: 10),
-                  //nut register
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _registerAccount,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.indigo,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: const Text(
-                        "Register",
-                        style: TextStyle(fontSize: 13, color: Colors.white),
-                      ),
-                    ),
+                  // Bottom-left circle
+                  Positioned(
+                    bottom: -height * 0.2,
+                    left: -width * 0.25,
+                    child: _circle(width * 0.6),
                   ),
                 ],
+              );
+            },
+          ),
+
+          // MAIN CONTENT (giữ nguyên của bạn)
+          SafeArea(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 150,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 100),
+                    const Text(
+                      "Password-Recode",
+                      style: TextStyle(
+                        fontSize: 25,
+                        color: Color.fromARGB(255, 23, 3, 249),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _textfield(
+                      controller: _passwordController,
+                      label: "Password",
+                      icon: Icons.lock_outline,
+                      obscure: _obscurePassword,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                          color: Colors.indigo,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    _textfield(
+                      controller: _repasswordController,
+                      label: "Re-Password",
+                      icon: Icons.lock_outline,
+                      obscure: _obscureRePassword,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureRePassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                          color: Colors.indigo,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscureRePassword = !_obscureRePassword;
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 0.5),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: _sendOtp,
+                        child: const Text(
+                          "Send Confirmation Code Via Email",
+                          style: TextStyle(
+                            color: Colors.indigo,
+                            fontSize: 13,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _textfield(
+                      controller: _otpController,
+                      label: "OTP",
+                      icon: Icons.mark_email_unread_outlined,
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _registerAccount,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.indigo,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text(
+                          "Register",
+                          style: TextStyle(fontSize: 13, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -232,6 +340,7 @@ class _RegisterPasswordScreen extends State<RegisterPasswordScreen> {
     required IconData icon,
     String? hint,
     bool obscure = false,
+    Widget? suffixIcon,
   }) {
     return TextField(
       controller: controller,
@@ -243,6 +352,7 @@ class _RegisterPasswordScreen extends State<RegisterPasswordScreen> {
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        suffixIcon: suffixIcon,
       ),
     );
   }

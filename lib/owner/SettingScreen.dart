@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:fieldshub/user/login_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,7 +45,7 @@ class _SettingScreenState extends State<SettingScreen> {
         });
       }
     } catch (e) {
-      print("Error loading user data: $e");
+     
       setState(() {
         userName = 'Khách';
       });
@@ -183,52 +182,7 @@ class _SettingScreenState extends State<SettingScreen> {
 
                   const SizedBox(height: 25),
                   Center(
-  child: ElevatedButton.icon(
-    onPressed: () async {
-      final shouldLogout = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Xác nhận đăng xuất'),
-          content: const Text('Bạn có chắc chắn muốn đăng xuất không?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Hủy'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Đăng xuất'),
-            ),
-          ],
-        ),
-      );
-
-      if (shouldLogout == true) {
-        await FirebaseAuth.instance.signOut();
-        if (context.mounted) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const LoginScreen(),
-            ),
-            (route) => false, // Xóa hết stack cũ để không quay lại được
-          );
-        }
-      }
-    },
-    icon: const Icon(Icons.logout, color: Colors.white),
-    label: const Text(
-      "Đăng xuất",
-      style: TextStyle(color: Colors.white),
-    ),
-    style: ElevatedButton.styleFrom(
-      backgroundColor: Colors.redAccent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 12),
-    ),
-  ),
+  
 ),
 
                   const SizedBox(height: 30),
