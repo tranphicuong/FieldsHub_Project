@@ -1,15 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:fieldshub/owner/ChatListScreen.dart';
-import 'package:fieldshub/owner/FieldListScreen.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart';
+import 'package:fieldshub/user/ChatListScreen.dart';
 import 'package:fieldshub/owner/ManageFieldScreen.dart';
 import 'package:fieldshub/owner/OrderScreen.dart';
 import 'package:fieldshub/owner/RevenueReportScreen.dart';
 import 'package:fieldshub/owner/ReviewScreen.dart';
-
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
+import 'package:fieldshub/owner/FieldListScreen.dart'; // DanhSachSanScreen
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -21,14 +20,17 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   String? userName;
   String userAvatar = '';
-  int _unreadMessagesCount = 0; 
+  int _unreadMessagesCount = 0;
   int _unreadNotificationsCount = 0;
+
+  final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'vi', symbol: 'đ');
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
     _listenToUnreadNotifications();
+    _listenToUnreadMessages();
   }
 
   Future<void> _loadUserData() async {
@@ -66,31 +68,65 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // TỔNG SỐ SÂN HIỆN TẠI (KHÔNG PHẢI SÂN TẠO HÔM NAY)
-  Stream<Map<String, int>> _getTotalFieldCounts() {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return Stream.value({'Bóng Đá': 0, 'Bida': 0});
+  void _listenToUnreadMessages() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-    return FirebaseFirestore.instance
-        .collection('fields')
-        .where('owner_id', isEqualTo: FirebaseFirestore.instance.doc('users/$userId'))
+    FirebaseFirestore.instance
+        .collection('conversations')
+        .where('users', arrayContains: user.uid)
         .snapshots()
-        .map((snapshot) {
-      int footballCount = 0;
-      int billiardCount = 0;
-
-      for (var doc in snapshot.docs) {
-        final sport = (doc['sport']?.toString() ?? '').toLowerCase();
-        if (sport.contains('bóng') || sport.contains('football') || sport.contains('soccer')) {
-          footballCount++;
-        } else if (sport.contains('bida') || sport.contains('billiard') || sport.contains('pool')) {
-          billiardCount++;
-        }
+        .listen((snapshot) async {
+      int totalUnread = 0;
+      for (var convDoc in snapshot.docs) {
+        final convId = convDoc.id;
+        final messagesSnap = await FirebaseFirestore.instance
+            .collection('conversations')
+            .doc(convId)
+            .collection('messages')
+            .where('senderId', isNotEqualTo: user.uid)
+            .where('isRead', isEqualTo: false)
+            .get();
+        totalUnread += messagesSnap.docs.length;
       }
-      return {'Bóng Đá': footballCount, 'Bida': billiardCount};
+      if (mounted) {
+        setState(() => _unreadMessagesCount = totalUnread);
+      }
     });
   }
 
+  // LẤY TÊN MÔN THỂ THAO CHUẨN
+  Future<String> _getSportName(dynamic fieldRef) async {
+    if (fieldRef == null) return 'Khác';
+
+    DocumentReference? sportRef;
+    if (fieldRef is DocumentReference && fieldRef.parent.id == 'sports') {
+      sportRef = fieldRef;
+    } else if (fieldRef is String && fieldRef.contains('sports/')) {
+      sportRef = FirebaseFirestore.instance.doc(fieldRef);
+    } else if (fieldRef is String) {
+      sportRef = FirebaseFirestore.instance.doc('sports/$fieldRef');
+    }
+
+    if (sportRef == null) return 'Khác';
+
+    try {
+      final doc = await sportRef.get();
+      if (!doc.exists) return 'Khác';
+      final name = (doc['name'] as String?)?.trim();
+      final lower = name?.toLowerCase() ?? '';
+
+      if (lower.contains('bóng đá') || lower.contains('bongda')) return 'Bóng đá';
+      if (lower.contains('cầu lông') || lower.contains('caulong')) return 'Cầu lông';
+      if (lower.contains('bóng chuyền') || lower.contains('bongchuyen')) return 'Bóng chuyền';
+      if (lower.contains('bida')) return 'Bida';
+      return name ?? 'Khác';
+    } catch (e) {
+      return 'Khác';
+    }
+  }
+
+ 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -125,28 +161,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
             const Spacer(),
-            // Chat
             Stack(
               children: [
                 IconButton(
                   icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ChatListScreen()),
-                    );
-                  },
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatListScreen())),
                 ),
                 if (_unreadMessagesCount > 0)
                   Positioned(
-                    right: 8,
-                    top: 8,
+                    right: 6,
+                    top: 6,
                     child: Container(
-                      padding: const EdgeInsets.all(2),
+                      padding: const EdgeInsets.all(4),
                       decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
                       child: Text(
-                        _unreadMessagesCount.toString(),
+                        _unreadMessagesCount > 99 ? '99+' : '$_unreadMessagesCount',
                         style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                         textAlign: TextAlign.center,
                       ),
@@ -154,8 +184,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
               ],
             ),
-            // Notification
-           
+            const SizedBox(width: 16),
           ],
         ),
       ),
@@ -167,7 +196,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const Text("Just for you", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
             const SizedBox(height: 10),
 
-            // 1. ĐÁNH GIÁ THÁNG HIỆN TẠI
+            // ĐÁNH GIÁ THÁNG
             _buildMonthlyRatingCard(),
             const SizedBox(height: 20),
 
@@ -181,16 +210,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _buildMenuItem(Icons.star_rate, "Đánh Giá", onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => DanhGiaCuaToiScreen(ownerUserId: FirebaseAuth.instance.currentUser!.uid),
-                    ),
+                    MaterialPageRoute(builder: (_) => DanhGiaCuaToiScreen(ownerUserId: FirebaseAuth.instance.currentUser!.uid)),
                   );
                 }),
               ],
             ),
             const SizedBox(height: 20),
 
-            // 2. TỔNG SỐ SÂN HIỆN TẠI
+            // TỔNG SỐ SÂN
             StreamBuilder<Map<String, int>>(
               stream: _getTotalFieldCounts(),
               builder: (context, snapshot) {
@@ -227,8 +254,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const Text("Dashboard", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
             const SizedBox(height: 15),
 
-            // 3. BIỂU ĐỒ DOANH THU
-            _buildRevenueCharts(),
+            // 2 BIỂU ĐỒ DOANH THU SIÊU ĐẸP
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _revenuePieChart("Tháng ${DateFormat('MM').format(DateTime.now())}", isToday: false),
+                  _revenuePieChart("Hôm nay ${DateFormat('dd/MM').format(DateTime.now())}", isToday: true),
+                ],
+              ),
+            ),
             const SizedBox(height: 30),
           ],
         ),
@@ -236,102 +272,330 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ==================== PHẦN 1: ĐÁNH GIÁ THÁNG ====================
-  // ==================== PHẦN 1: ĐÁNH GIÁ THÁNG (ĐÃ FIX HOÀN HẢO) ====================
-Widget _buildMonthlyRatingCard() {
-  final userId = FirebaseAuth.instance.currentUser?.uid;
-  if (userId == null) {
-    return _ratingCard("Đánh Giá Tháng Này", "Đăng nhập để xem", 0.0, 0);
-  }
+ Widget _revenuePieChart(String title, {required bool isToday}) {
+  final userId = FirebaseAuth.instance.currentUser!.uid;
 
-  final now = DateTime.now();
-  final startOfMonth = DateTime(now.year, now.month, 1);
+  final nowVN = DateTime.now().toLocal();
+  final startOfDay = DateTime(nowVN.year, nowVN.month, nowVN.day);
+  final startOfMonth = DateTime(nowVN.year, nowVN.month, 1);
+  final start = isToday ? startOfDay : startOfMonth;
+  final end = isToday ? startOfDay.add(const Duration(days: 1)) : DateTime(nowVN.year, nowVN.month + 1, 1);
 
-  // Dùng FutureBuilder + setState để tránh nhấp nháy
-  return FutureBuilder<Map<String, dynamic>>(
-    future: _fetchMonthlyRating(userId, startOfMonth),
-    builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting) {
-        return _ratingCard("Đánh Giá Tháng ${DateFormat('MM/yyyy').format(now)}", "Đang tải...", 0.0, 0);
+  return StreamBuilder<Map<String, double>>(
+    stream: FirebaseFirestore.instance
+        .collectionGroup('pending_payments')
+        .where('owner_id', isEqualTo: userId)
+        .where('status', whereIn: ['Chờ xác nhận', 'Đã xác nhận'])
+        .snapshots()
+        .asyncMap((pendingSnap) async {
+      // Lấy bookings realtime (dùng snapshots thay vì get())
+      final bookingStream = FirebaseFirestore.instance
+          .collection('bookings')
+          .where('owner_id', isEqualTo: userId)
+          .where('status', isEqualTo: 'Đã xác nhận')
+          .snapshots();
+
+      final bookingSnap = await bookingStream.first; // Lấy snapshot đầu tiên
+
+      Map<String, double> result = {};
+
+      // Tiền cọc
+      for (var doc in pendingSnap.docs) {
+        final data = doc.data();
+        final ts = (data['created_at'] as Timestamp?)?.toDate();
+        if (ts == null) continue;
+        final timeVN = ts.add(const Duration(hours: 7));
+        if (timeVN.isBefore(start) || timeVN.isAfter(end)) continue;
+
+        final deposit = (data['deposit_amount'] as num?)?.toDouble() ?? 0.0;
+        final sport = await _getSportName(data['sport_id'] ?? data['field_id']);
+        result[sport] = (result[sport] ?? 0) + deposit;
       }
 
-      if (!snapshot.hasData || snapshot.data!['count'] == 0) {
-        return _ratingCard(
-          "Đánh Giá Tháng ${DateFormat('MM/yyyy').format(now)}",
-          "Chưa có đánh giá nào",
-          0.0,
-          0,
-        );
+      // Tiền còn lại từ bookings
+      for (var doc in bookingSnap.docs) {
+  final data = doc.data();
+  final ts = (data['updated_at'] as Timestamp?)?.toDate();
+  if (ts == null) continue;
+  final timeVN = ts.add(const Duration(hours: 7));
+
+  // SỬA CHỖ NÀY: Chỉ lọc ngày khi isToday = true
+  // Với biểu đồ tháng → vẫn tính booking của cả tháng (không cần kiểm tra giờ)
+  if (isToday) {
+    if (timeVN.isBefore(start) || timeVN.isAfter(end)) continue;
+  } else {
+    // Chỉ cần cùng tháng + năm là được tính vào biểu đồ tháng
+    final nowVN = DateTime.now().toLocal();
+    if (timeVN.year != nowVN.year || timeVN.month != nowVN.month) continue;
+  }
+
+  final price = (data['price'] as num?)?.toDouble() ?? 0.0;
+  final depositPaid = (data['deposit_paid'] as num?)?.toDouble() ?? 0.0; // ← SỬA CHÍNH TẢ TỪ depoist_paid → deposit_paid
+  final remaining = price - depositPaid;
+  if (remaining <= 0) continue;
+
+  final sport = await _getSportName(data['sport_id']);
+  result[sport] = (result[sport] ?? 0) + remaining;
+}
+
+      return result;
+    }).handleError((e) {
+      return <String, double>{};
+    }),
+
+    builder: (context, snapshot) {
+      if (!snapshot.hasData || snapshot.connectionState == ConnectionState.waiting) {
+        return _buildLoadingPieChart(title);
       }
 
       final data = snapshot.data!;
-      return _ratingCard(
-        "Đánh Giá Tháng ${DateFormat('MM/yyyy').format(now)}",
-        _getMotivationMessage(data['avg']),
-        data['avg'],
-        data['count'],
-      );
+      final total = data.values.fold(0.0, (a, b) => a + b);
+
+      if (total == 0) {
+        return _buildZeroChart(title);
+      }
+
+      return _MultiSportPieChart(title: title, sportRevenue: data);
     },
   );
 }
 
-// Hàm lấy đánh giá tháng (chạy 1 lần duy nhất, không nhấp nháy)
-Future<Map<String, dynamic>> _fetchMonthlyRating(String userId, DateTime startOfMonth) async {
-  try {
-    final fieldSnapshot = await FirebaseFirestore.instance
-        .collection('fields')
-        .where('owner_id', whereIn: [userId, FirebaseFirestore.instance.doc('users/$userId')])
-        .get();
-
-    if (fieldSnapshot.docs.isEmpty) return {'avg': 0.0, 'count': 0};
-
-    final fieldIds = fieldSnapshot.docs.map((e) => e.reference).toList();
-
-    // Fallback nếu index chưa build
-    try {
-      final reviewSnapshot = await FirebaseFirestore.instance
-          .collection('reviews')
-          .where('field_id', whereIn: fieldIds)
-          .where('created_at', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
-          .orderBy('created_at', descending: true)  // Thêm orderBy để dùng index
-          .get();
-
-      if (reviewSnapshot.docs.isEmpty) return {'avg': 0.0, 'count': 0};
-
-      double total = 0;
-      for (var doc in reviewSnapshot.docs) {
-        total += (doc['rating'] as num).toDouble();
-      }
-
-      return {
-        'avg': total / reviewSnapshot.docs.length,
-        'count': reviewSnapshot.docs.length,
-      };
-    } catch (e) {
-      print('Index đang build, dùng fallback: $e');
-      // Fallback: không filter created_at
-      final reviewSnapshot = await FirebaseFirestore.instance
-          .collection('reviews')
-          .where('field_id', whereIn: fieldIds)
-          .get();
-
-      if (reviewSnapshot.docs.isEmpty) return {'avg': 0.0, 'count': 0};
-
-      double total = 0;
-      for (var doc in reviewSnapshot.docs) {
-        total += (doc['rating'] as num).toDouble();
-      }
-
-      return {
-        'avg': total / reviewSnapshot.docs.length,
-        'count': reviewSnapshot.docs.length,
-      };
-    }
-  } catch (e) {
-    print('Lỗi lấy đánh giá: $e');
-    return {'avg': 0.0, 'count': 0};
-  }
+// Thêm widget này vào cuối class để hiển thị 0đ đẹp hơn
+Widget _buildZeroChart(String title) {
+  return Column(
+    children: [
+      Container(
+        width: 130,
+        height: 130,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.grey[200],
+          border: Border.all(color: Colors.grey.shade400, width: 12),
+        ),
+        child: const Center(
+          child: Text('0đ', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.grey)),
+        ),
+      ),
+      const SizedBox(height: 12),
+      Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+      const Text('Chưa có doanh thu', style: TextStyle(fontSize: 12, color: Colors.grey)),
+    ],
+  );
 }
+
+// Widget loading đẹp mắt khi đang tải
+Widget _buildLoadingPieChart(String title) {
+  return Column(
+    children: [
+      Container(
+        width: 130,
+        height: 130,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.grey[200],
+          border: Border.all(color: Colors.grey.shade400, width: 12),
+        ),
+        child: Center(
+          child: Text('0đ', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.grey[600])),
+        ),
+      ),
+      const SizedBox(height: 12),
+      Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+      const Text('Đang tải...', style: TextStyle(fontSize: 12, color: Colors.grey)),
+    ],
+  );
+}
+
+  // TỔNG SỐ SÂN
+  Stream<Map<String, int>> _getTotalFieldCounts() {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return Stream.value({'Bóng Đá': 0, 'Bida': 0});
+
+    return FirebaseFirestore.instance
+        .collection('fields')
+        .snapshots()
+        .asyncMap((snapshot) async {
+      int footballCount = 0;
+      int billiardCount = 0;
+
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        dynamic ownerId = data['owner_id'];
+        bool isOwner = false;
+        if (ownerId is String) {
+          isOwner = (ownerId == userId);
+        } else if (ownerId is DocumentReference) {
+          isOwner = (ownerId.id == userId);
+        }
+        if (!isOwner) continue;
+
+        final sport = (data['sport']?.toString() ?? '').toLowerCase();
+        final sportId = (data['sport_id']?.toString() ?? '').toLowerCase();
+
+        if (sport.contains('bóng') || sportId.contains('bongda')) {
+          footballCount++;
+        } else if (sport.contains('bida') || sportId.contains('bida')) {
+          billiardCount++;
+        }
+      }
+      return {'Bóng Đá': footballCount, 'Bida': billiardCount};
+    });
+  }
+
+  // MENU NHANH
+  Widget _buildMenuItem(IconData icon, String label, {VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(50),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5, offset: Offset(0, 3))]),
+            child: Icon(icon, color: Colors.blueAccent, size: 28),
+          ),
+          const SizedBox(height: 6),
+          Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
+  // CARD SÂN
+  static Widget _buildFieldItem({
+    required IconData icon,
+    required String title,
+    required String location,
+    required String details,
+    required String sub,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5, offset: Offset(0, 3))],
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 40, color: Colors.blueAccent),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  Text(location, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(details, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+              ),
+            ),
+            Column(
+              children: [
+                Text(sub, style: const TextStyle(fontWeight: FontWeight.bold)),
+                const Icon(Icons.chevron_right, color: Colors.grey),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ĐÁNH GIÁ THÁNG (giữ nguyên code cũ của bạn)
+  Widget _buildMonthlyRatingCard() {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      return _ratingCard("Đánh Giá Tháng Này", "Đăng nhập để xem", 0.0, 0);
+    }
+
+    final now = DateTime.now();
+    final startOfMonth = DateTime(now.year, now.month, 1);
+
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _fetchMonthlyRating(userId, startOfMonth),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _ratingCard("Đánh Giá Tháng ${DateFormat('MM/yyyy').format(now)}", "Đang tải...", 0.0, 0);
+        }
+
+        if (!snapshot.hasData || snapshot.data!['count'] == 0) {
+          return _ratingCard(
+            "Đánh Giá Tháng ${DateFormat('MM/yyyy').format(now)}",
+            "Chưa có đánh giá nào",
+            0.0,
+            0,
+          );
+        }
+
+        final data = snapshot.data!;
+        return _ratingCard(
+          "Đánh Giá Tháng ${DateFormat('MM/yyyy').format(now)}",
+          _getMotivationMessage(data['avg']),
+          data['avg'],
+          data['count'],
+        );
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> _fetchMonthlyRating(String userId, DateTime startOfMonth) async {
+    try {
+      final fieldSnapshot = await FirebaseFirestore.instance
+          .collection('fields')
+          .where('owner_id', whereIn: [userId, FirebaseFirestore.instance.doc('users/$userId')])
+          .get();
+
+      if (fieldSnapshot.docs.isEmpty) return {'avg': 0.0, 'count': 0};
+
+      final fieldIds = fieldSnapshot.docs.map((e) => e.reference).toList();
+
+      try {
+        final reviewSnapshot = await FirebaseFirestore.instance
+            .collection('reviews')
+            .where('field_id', whereIn: fieldIds)
+            .where('created_at', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
+            .orderBy('created_at', descending: true)
+            .get();
+
+        if (reviewSnapshot.docs.isEmpty) return {'avg': 0.0, 'count': 0};
+
+        double total = 0;
+        for (var doc in reviewSnapshot.docs) {
+          total += (doc['rating'] as num).toDouble();
+        }
+
+        return {
+          'avg': total / reviewSnapshot.docs.length,
+          'count': reviewSnapshot.docs.length,
+        };
+      } catch (e) {
+        final reviewSnapshot = await FirebaseFirestore.instance
+            .collection('reviews')
+            .where('field_id', whereIn: fieldIds)
+            .get();
+
+        if (reviewSnapshot.docs.isEmpty) return {'avg': 0.0, 'count': 0};
+
+        double total = 0;
+        for (var doc in reviewSnapshot.docs) {
+          total += (doc['rating'] as num).toDouble();
+        }
+
+        return {
+          'avg': total / reviewSnapshot.docs.length,
+          'count': reviewSnapshot.docs.length,
+        };
+      }
+    } catch (e) {
+      return {'avg': 0.0, 'count': 0};
+    }
+  }
 
   Widget _ratingCard(String title, String message, double avgRating, int reviewCount) {
     return Container(
@@ -386,176 +650,82 @@ Future<Map<String, dynamic>> _fetchMonthlyRating(String userId, DateTime startOf
     if (rating >= 3.5) return "Khá ổn định, có thể cải thiện thêm!";
     return "Cần cải thiện chất lượng dịch vụ!";
   }
-
-  // ==================== PHẦN 3: DOANH THU ====================
-  Widget _buildRevenueCharts() {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return const SizedBox();
-
-    final now = DateTime.now();
-    final startOfMonth = DateTime(now.year, now.month, 1);
-    final startOfDay = DateTime(now.year, now.month, now.day);
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: [
-        Expanded(child: _revenuePieChart("Tháng ${DateFormat('MM').format(now)}", startOfMonth, DateTime(now.year, now.month + 1, 1))),
-        Expanded(child: _revenuePieChart("Hôm nay ${DateFormat('dd/MM').format(now)}", startOfDay, startOfDay.add(const Duration(days: 1)))),
-      ],
-    );
-  }
-
-  Widget _revenuePieChart(String title, DateTime start, DateTime end) {
-    final userId = FirebaseAuth.instance.currentUser!.uid;
-
-    return StreamBuilder<Map<String, double>>(
-      stream: FirebaseFirestore.instance
-          .collection('bookings')
-          .where('owner_id', isEqualTo: FirebaseFirestore.instance.doc('users/$userId'))
-          .where('status', isEqualTo: 'completed')
-          .where('created_at', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
-          .where('created_at', isLessThan: Timestamp.fromDate(end))
-          .snapshots()
-          .asyncMap((snapshot) async {
-        double football = 0, billiard = 0;
-        for (var doc in snapshot.docs) {
-          final data = doc.data() as Map<String, dynamic>;
-          final amount = (data['total_price'] as num?)?.toDouble() ?? 0;
-          final fieldRef = data['field_id'] as DocumentReference?;
-          if (fieldRef != null) {
-            final fieldSnap = await fieldRef.get();
-            if (fieldSnap.exists) {
-              final sport = (fieldSnap['sport']?.toString() ?? '').toLowerCase();
-              if (sport.contains('bóng') || sport.contains('football')) football += amount;
-              else if (sport.contains('bida') || sport.contains('billiard')) billiard += amount;
-            }
-          }
-        }
-        return {'football': football, 'billiard': billiard};
-      }),
-      builder: (context, snapshot) {
-        final data = snapshot.data ?? {'football': 0.0, 'billiard': 0.0};
-        return _PieChart(title: title, football: data['football']!, billiard: data['billiard']!);
-      },
-    );
-  }
- 
- 
-  // ==================== CÁC WIDGET HỖ TRỢ ====================
-  Widget _buildMenuItem(IconData icon, String label, {VoidCallback? onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(50),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: const [
-              BoxShadow(color: Colors.black12, blurRadius: 5, offset: Offset(0, 3)),
-            ]),
-            child: Icon(icon, color: Colors.blueAccent, size: 28),
-          ),
-          const SizedBox(height: 6),
-          Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
-
-  static Widget _buildFieldItem({
-    required IconData icon,
-    required String title,
-    required String location,
-    required String details,
-    required String sub,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5, offset: Offset(0, 3))],
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 40, color: Colors.blueAccent),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  Text(location, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                  Text(details, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                ],
-              ),
-            ),
-            Column(
-              children: [
-                Text(sub, style: const TextStyle(fontWeight: FontWeight.bold)),
-                const Icon(Icons.chevron_right, color: Colors.grey),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
-// BIỂU ĐỒ TRÒN
-class _PieChart extends StatelessWidget {
+// BIỂU ĐỒ TRÒN SIÊU ĐẸP + 0Đ TO RÕ
+class _MultiSportPieChart extends StatelessWidget {
   final String title;
-  final double football;
-  final double billiard;
+  final Map<String, double> sportRevenue;
 
-  const _PieChart({required this.title, required this.football, required this.billiard});
+  const _MultiSportPieChart({required this.title, required this.sportRevenue});
+
+  Color _getSportColor(String sport) {
+    final s = sport.toLowerCase();
+    if (s.contains('bóng đá') || s.contains('bongda')) return Colors.green.shade600;
+    if (s.contains('cầu lông') || s.contains('caulong')) return Colors.blue.shade600;
+    if (s.contains('bóng chuyền') || s.contains('bongchuyen')) return Colors.purple.shade600;
+    if (s.contains('bida')) return Colors.brown.shade600;
+    return Colors.grey.shade600;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final total = football + billiard;
+    final total = sportRevenue.values.fold(0.0, (a, b) => a + b);
+    final formatter = NumberFormat.currency(locale: 'vi', symbol: 'đ');
+
     if (total == 0) {
       return Column(
         children: [
-          SizedBox(width: 120, height: 120, child: PieChart(PieChartData(sections: [PieChartSectionData(value: 1, color: Colors.grey[300]!, title: '')]))),
-          const SizedBox(height: 8),
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-          const Text("0đ", style: TextStyle(fontSize: 12, color: Colors.grey)),
+          Container(
+            width: 130,
+            height: 130,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.grey[200],
+              border: Border.all(color: Colors.grey.shade400, width: 12),
+            ),
+            child: const Center(
+              child: Text(
+                '0đ',
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.grey),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          const Text('Chưa có doanh thu', style: TextStyle(fontSize: 12, color: Colors.grey)),
         ],
       );
     }
 
+    final sections = sportRevenue.entries.map((e) {
+      final percentage = (e.value / total) * 100;
+      return PieChartSectionData(
+        value: e.value,
+        color: _getSportColor(e.key),
+        title: percentage >= 8 ? '${percentage.toStringAsFixed(0)}%' : '',
+        titleStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+        radius: 44,
+      );
+    }).toList();
+
     return Column(
       children: [
         SizedBox(
-          width: 120,
-          height: 120,
+          width: 130,
+          height: 130,
           child: PieChart(PieChartData(
-            sectionsSpace: 2,
-            sections: [
-              PieChartSectionData(
-                value: football,
-                color: Colors.green,
-                title: "${(football / total * 100).toStringAsFixed(0)}%",
-                titleStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-              ),
-              PieChartSectionData(
-                value: billiard,
-                color: Colors.orange,
-                title: "${(billiard / total * 100).toStringAsFixed(0)}%",
-                titleStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-              ),
-            ],
+            sections: sections,
+            centerSpaceRadius: 38,
+            sectionsSpace: 3,
           )),
         ),
-        const SizedBox(height: 8),
-        Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-        Text(NumberFormat.currency(locale: 'vi', symbol: 'đ').format(total), style: const TextStyle(fontSize: 11)),
+        const SizedBox(height: 10),
+        Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        Text(
+          formatter.format(total),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.green),
+        ),
       ],
     );
   }

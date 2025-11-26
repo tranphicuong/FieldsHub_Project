@@ -64,7 +64,6 @@ class _VerificationPendingScreenState extends State<VerificationPendingScreen> {
     );
   }
 
-  // Hàm điều hướng về login khi duyệt xong
   void _navigateToLogin() {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -91,129 +90,186 @@ class _VerificationPendingScreenState extends State<VerificationPendingScreen> {
     });
   }
 
-  // Màn loading ban đầu
-  Widget _buildLoading() => Stack(
-        children: [
-          Container(color: const Color(0xFFD6ECFF)),
-          const Center(child: CircularProgressIndicator(color: Colors.blue)),
-        ],
-      );
-
-  // Màn đang chờ duyệt
-  Widget _buildPending(String msg) {
-    return Stack(
-      children: [
-        // Nền nhạt
-        Container(color: const Color(0xFFD6ECFF)),
-
-        // Vùng cong trên
-        Positioned(
-          top: -120,
-          left: -50,
-          right: -50,
-          child: Container(
-            height: 260,
-            decoration: const BoxDecoration(
-              color: Color(0xFF78A9D6),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(200),
-                bottomRight: Radius.circular(200),
-              ),
-            ),
-          ),
+  Widget _buildLoading() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF78A9D6), Color(0xFFD6ECFF)],
         ),
-
-        // Vùng tròn to dưới trái
-        Positioned(
-          bottom: -100,
-          left: -60,
-          child: Container(
-            height: 260,
-            width: 260,
-            decoration: const BoxDecoration(
-              color: Color(0xFF0D5C89),
-              shape: BoxShape.circle,
-            ),
-            child: const Padding(
-              padding: EdgeInsets.only(left: 25, top: 110),
-              child: Text(
-                'Thể thao là\nđam mê.',
-                style: TextStyle(
-                  color: Color(0xFFF46A6A),
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
+      ),
+      child: const Center(
+        child: CircularProgressIndicator(
+          color: Colors.white,
+          strokeWidth: 3,
         ),
-
-        // Vùng tròn nhỏ dưới phải
-        Positioned(
-          bottom: 10,
-          right: 20,
-          child: Container(
-            height: 130,
-            width: 130,
-            decoration: const BoxDecoration(
-              color: Color(0xFF095E85),
-              shape: BoxShape.circle,
-            ),
-            child: const Center(
-              child: Text(
-                'sân chơi\nlà cuộc\nsống.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                ),
-              ),
-            ),
-          ),
-        ),
-
-        // Nội dung chính
-        Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 30),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const SizedBox(height: 60),
-                const Text(
-                  'Chào mừng bạn đến với',
-                  style: TextStyle(fontSize: 20, color: Colors.white70),
-                ),
-                const SizedBox(height: 5),
-                const Text(
-                  'FieldHub',
-                  style: TextStyle(
-                    fontSize: 40,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 50),
-                Text(
-                  msg,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    color: Color(0xFF004A8E),
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 40),
-                const CircularProgressIndicator(color: Colors.blue),
-              ],
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
-  // Màn đã được duyệt
-  Widget _buildApproved() =>
-      _buildPending("Chúc mừng! Hồ sơ đã được duyệt!\nĐang chuyển về trang đăng nhập...");
+  Widget _buildPending(String msg) {
+    final size = MediaQuery.of(context).size;
+    final isSmallScreen = size.width < 360;
+    final isMediumScreen = size.width < 600;
+    
+    return Scaffold(
+      body: Container(
+        width: size.width,
+        height: size.height,
+        color: const Color(0xFFD6ECFF),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // Top curved decoration
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                height: size.height * 0.18,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF6B9AC4),
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(200),
+                    bottomRight: Radius.circular(200),
+                  ),
+                ),
+              ),
+            ),
+
+            // Bottom left large circle
+            Positioned(
+              bottom: 0,
+              left: -80,
+              child: Container(
+                height: 260,
+                width: 260,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0D5C89),
+                  shape: BoxShape.circle,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.only(
+                    left: 95,
+                    top: 110,
+                  ),
+                  child: Text(
+                    'Thể thao là\nđam mê.',
+                    style: TextStyle(
+                      color: const Color(0xFFF46A6A),
+                      fontSize: isSmallScreen ? 22 : isMediumScreen ? 26 : 30,
+                      fontWeight: FontWeight.bold,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Bottom right circle
+            Positioned(
+              bottom: 30,
+              right: 20,
+              child: Container(
+                height: isSmallScreen ? 110 : 140,
+                width: isSmallScreen ? 110 : 140,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0D5C89),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text(
+                      'sân chơi\nlà cuộc\nsống.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: isSmallScreen ? 14 : isMediumScreen ? 16 : 18,
+                        fontWeight: FontWeight.w600,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Main content
+            SafeArea(
+              child: Column(
+                children: [
+                  // Top section with title
+                  SizedBox(height: size.height * 0.04),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 30),
+                    child: Column(
+                      children: [
+                        Text(
+                          'Chào mừng bạn đến với',
+                          style: TextStyle(
+                            fontSize: isSmallScreen ? 15 : 17,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          'FieldHub',
+                          style: TextStyle(
+                            fontSize: isSmallScreen ? 28 : isMediumScreen ? 32 : 36,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  // Middle section with message
+                  Expanded(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 40),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              msg,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: isSmallScreen ? 14 : isMediumScreen ? 15 : 16,
+                                color: const Color(0xFF0D5C89),
+                                height: 1.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 30),
+                            const CircularProgressIndicator(
+                              color: Color(0xFF0D5C89),
+                              strokeWidth: 3,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  
+                  // Bottom spacing
+                  SizedBox(height: size.height * 0.12),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildApproved() {
+    return _buildPending(
+      "Chúc mừng! Hồ sơ đã được duyệt!\nĐang chuyển về trang đăng nhập...",
+    );
+  }
 }
